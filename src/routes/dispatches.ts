@@ -375,13 +375,17 @@ dispatchRoutes.get('/dashboard', async (c) => {
   const orgId = c.get('auth').orgId;
   const db = c.env.DB;
   const month = new Date().toISOString().slice(0, 7);
-  const [byGodown, byItem, reserved, drafts, monthly, lots] = await db.batch([
+  // The last six calendar months, oldest first, for the despatch trend.
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5 + i, 1)).toISOString().slice(0, 7));
+  const [byGodown, byItem, reserved, drafts, monthly, lots, trend] = await db.batch([
     db.prepare("SELECT g.id, g.name, COALESCE(SUM(e.grams), 0) AS grams, COALESCE(SUM(e.bags), 0) AS bags FROM locations g LEFT JOIN stock_ledger e ON e.location_id = g.id WHERE g.org_id = ? AND g.kind = 'GODOWN' AND g.active = 1 GROUP BY g.id ORDER BY g.name").bind(orgId),
     db.prepare('SELECT i.id, i.name, i.coffee_type, i.form, i.grade, SUM(e.grams) AS grams, SUM(e.bags) AS bags FROM stock_ledger e JOIN items i ON i.id = e.item_id WHERE e.org_id = ? GROUP BY i.id HAVING SUM(e.grams) <> 0 OR SUM(e.bags) <> 0 ORDER BY i.name').bind(orgId),
     db.prepare("SELECT COALESCE(SUM(l.grams), 0) AS grams, COALESCE(SUM(l.bags), 0) AS bags FROM dispatch_lines l JOIN dispatches d ON d.id = l.dispatch_id WHERE d.org_id = ? AND d.status = 'DRAFT' AND l.superseded_at IS NULL").bind(orgId),
-    db.prepare("SELECT d.id, d.no, d.status, d.dispatch_date, d.vehicle_no, c.name AS client_name, (SELECT COALESCE(SUM(grams), 0) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS grams, (SELECT COALESCE(SUM(bags), 0) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS bags, (SELECT COUNT(*) FROM dispatch_packages WHERE dispatch_id = d.id AND status <> 'CANCELLED') AS packages FROM dispatches d JOIN clients c ON c.id = d.client_id WHERE d.org_id = ? AND d.status = 'DRAFT' ORDER BY d.created_at DESC LIMIT 20").bind(orgId),
+    db.prepare("SELECT d.id, d.no, d.status, d.dispatch_date, d.vehicle_no, c.name AS client_name, (SELECT COALESCE(SUM(grams), 0) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS grams, (SELECT COALESCE(SUM(bags), 0) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS bags, (SELECT COUNT(*) FROM dispatch_packages WHERE dispatch_id = d.id AND status <> 'CANCELLED') AS packages, (SELECT GROUP_CONCAT(DISTINCT location_id) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS godown_ids FROM dispatches d JOIN clients c ON c.id = d.client_id WHERE d.org_id = ? AND d.status = 'DRAFT' ORDER BY d.created_at DESC LIMIT 20").bind(orgId),
     db.prepare("SELECT COUNT(DISTINCT d.id) AS n, COALESCE(SUM(l.grams), 0) AS grams, COALESCE(SUM(l.bags), 0) AS bags FROM dispatches d JOIN dispatch_lines l ON l.dispatch_id = d.id AND l.superseded_at IS NULL WHERE d.org_id = ? AND d.status = 'DISPATCHED' AND substr(d.dispatch_date, 1, 7) = ?").bind(orgId, month),
-    db.prepare('SELECT COUNT(*) AS n FROM (SELECT lot_id FROM stock_ledger WHERE org_id = ? GROUP BY lot_id HAVING SUM(grams) > 0)').bind(orgId)
+    db.prepare('SELECT COUNT(*) AS n FROM (SELECT lot_id FROM stock_ledger WHERE org_id = ? GROUP BY lot_id HAVING SUM(grams) > 0)').bind(orgId),
+    db.prepare("SELECT substr(d.dispatch_date, 1, 7) AS m, COALESCE(SUM(l.bags), 0) AS bags, COALESCE(SUM(l.grams), 0) AS grams FROM dispatches d JOIN dispatch_lines l ON l.dispatch_id = d.id AND l.superseded_at IS NULL WHERE d.org_id = ? AND d.status = 'DISPATCHED' AND d.dispatch_date >= ? GROUP BY m").bind(orgId, `${months[0]}-01`)
   ]);
   type R = Record<string, string | number>;
   const g = byGodown.results as R[];
@@ -397,6 +401,10 @@ dispatchRoutes.get('/dashboard', async (c) => {
     lotsInStock: Number((lots.results[0] as R).n),
     byGodown: g.map((r) => ({ id: r.id, name: r.name, grams: r.grams, bags: r.bags })),
     byItem: (byItem.results as R[]).map((r) => ({ id: r.id, name: r.name, coffeeType: r.coffee_type, form: r.form, grade: r.grade, grams: r.grams, bags: r.bags })),
-    drafts: (drafts.results as R[]).map((r) => ({ id: r.id, no: r.no, status: r.status, date: r.dispatch_date, vehicleNo: r.vehicle_no, clientName: r.client_name, grams: r.grams, bags: r.bags, packages: r.packages }))
+    drafts: (drafts.results as R[]).map((r) => ({ id: r.id, no: r.no, status: r.status, date: r.dispatch_date, vehicleNo: r.vehicle_no, clientName: r.client_name, grams: r.grams, bags: r.bags, packages: r.packages, godownIds: String(r.godown_ids || '').split(',').filter(Boolean) })),
+    despatchTrend: months.map((m) => {
+      const row = (trend.results as R[]).find((t) => t.m === m);
+      return { month: m, bags: Number(row?.bags ?? 0), grams: Number(row?.grams ?? 0) };
+    })
   });
 });

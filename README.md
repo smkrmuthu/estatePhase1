@@ -58,6 +58,13 @@ Below 760 px wide the app switches to phone mode: a bottom tab bar (Home, Inward
 
 **Scan** opens the camera and reads a bag label's Code 128 barcode by itself, then shows that bag's trace. It uses the phone's built-in barcode reader where there is one (Android Chrome) and otherwise loads the bundled ZXing decoder (`public/vendor/zxing-0.21.3.min.js`, MIT licence, about 100 KB compressed) on first use. Camera access needs HTTPS (the live site) or localhost. A USB/Bluetooth scanner and typing the code still work everywhere.
 
+## Home page by role
+
+- **Godown operator:** a "today" page for their own godowns: big Inward / New despatch / Scan buttons, bags arrived and despatched today (undos net out), despatches being loaded there, stock in their godowns, and today's entries.
+- **Administrator, manager, viewer:** totals, a column chart of bags despatched per month (last 6 months, with a table view), bar charts of stock by coffee and by godown, despatches being loaded, and recent activity. Chart bars use caramel (`--chart`), checked for lightness, colour strength and contrast in light and dark mode.
+
+Undo, cancel and "Truck left" use in-app dialogs: what will happen, a reason picker (required for undo; "Other" needs a note), and one clear action.
+
 ## Roles
 
 | Role | Can |

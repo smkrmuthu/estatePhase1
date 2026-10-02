@@ -77,6 +77,43 @@
     }
   }
 
+  // In-app confirmation dialog: what will happen, an optional reason picker with notes,
+  // and one clear action. Resolves to { reason } when confirmed, null when backed out.
+  function ask({ title, body = "", confirm, back = "Go back", danger = false, reasons = null, reasonRequired = false }) {
+    return new Promise(resolve => {
+      const dlg = document.createElement("dialog");
+      dlg.className = "dlg";
+      dlg.innerHTML = `<form class="dlg-form" novalidate>
+        <h2 class="dlg-title">${esc(title)}</h2>
+        ${body ? `<div class="dlg-body">${body}</div>` : ""}
+        ${reasons ? `<label>Reason${reasonRequired ? "" : " (optional)"}<select name="reason">
+            <option value="">${reasonRequired ? "Choose a reason" : "No reason"}</option>${reasons.map(r => `<option>${esc(r)}</option>`).join("")}</select></label>
+          <label>Notes<textarea name="notes" rows="2" maxlength="200" placeholder="Anything the next person should know"></textarea></label>` : ""}
+        <div class="dlg-error" role="alert"></div>
+        <div class="dlg-actions"><button type="button" class="btn ghost" data-no>${esc(back)}</button><button type="submit" class="btn ${danger ? "danger-fill" : "primary"}">${esc(confirm)}</button></div>
+      </form>`;
+      document.body.appendChild(dlg);
+      const form = dlg.querySelector("form");
+      const fail = t => { dlg.querySelector(".dlg-error").textContent = t; };
+      const done = v => { dlg.close(); dlg.remove(); resolve(v); };
+      dlg.querySelector("[data-no]").addEventListener("click", () => done(null));
+      dlg.addEventListener("cancel", e => { e.preventDefault(); done(null); });
+      form.addEventListener("submit", e => {
+        e.preventDefault();
+        let reason = "";
+        if (reasons) {
+          const r = form.reason.value, n = form.notes.value.trim();
+          if (reasonRequired && !r) return fail("Choose a reason.");
+          if (r === "Other" && n.length < 3) return fail("Write a short note for \u201cOther\u201d.");
+          reason = r === "Other" ? n : [r, n].filter(Boolean).join(" \u2014 ");
+        }
+        done({ reason });
+      });
+      dlg.showModal();
+      (form.reason || form.querySelector("[type=submit]")).focus();
+    });
+  }
+
   const formData = form => Object.fromEntries(new FormData(form).entries());
   const options = (list, selected, labelFn, placeholder) =>
     (placeholder ? `<option value="">${esc(placeholder)}</option>` : "") +
@@ -184,15 +221,72 @@
 
   /* ---------- dashboard ---------- */
 
+  // Home page depends on the role: operators see today's work in their godowns,
+  // everyone else the estate-wide picture with trends.
   async function dashboard() {
-    const [d, tx] = await Promise.all([Api.get("/dashboard"), Api.get("/transactions?limit=8")]);
+    const operator = M.me.role === "operator";
+    const [d, tx] = await Promise.all([Api.get("/dashboard"), Api.get(`/transactions?limit=${operator ? 60 : 8}`)]);
+    return operator ? operatorHome(d, tx.transactions) : overviewHome(d, tx.transactions);
+  }
+
+  const ICON = {
+    inward: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    truck: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-.01M17 19a2 2 0 1 0 0-.01" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>`,
+    scan: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 9v6M10 9v6M12.5 9v6M15 9v6M17 9v6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>`
+  };
+
+  function operatorHome(d, txns) {
+    const mine = new Set(M.me.godownIds);
+    const myGodowns = active(M.godowns).filter(g => mine.has(g.id));
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+    const day = today();
+    const todays = txns.filter(t => t.date === day && t.entries.some(e => mine.has(e.locationId)));
+    // An undo (REVERSAL) carries the original entry's number as its reference, so it nets
+    // out against the inward or despatch it undid.
+    const bagsIn = (types, prefixes) => todays
+      .filter(t => types.includes(t.type) || (t.type === "REVERSAL" && prefixes.some(p => String(t.reference).startsWith(p))))
+      .reduce((s, t) => s + t.entries.filter(e => mine.has(e.locationId)).reduce((x, e) => x + e.bags, 0), 0);
+    const arrived = bagsIn(["RECEIPT", "OPENING"], ["RCV-", "OPN-"]);
+    const despatched = -bagsIn(["DISPATCH"], ["DSP-"]);
+    const loading = d.drafts.filter(x => x.godownIds.some(id => mine.has(id)));
+    const stock = d.byGodown.filter(g => mine.has(g.id));
+    then(() => { view.querySelector("[data-home-scan]").addEventListener("click", () => Scanner.open()); });
+    return `
+      <div class="hello">
+        <p class="hello-date">${esc(new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" }))}</p>
+        <h1>${greeting}, ${esc(M.me.name.split(/\s+/)[0])}</h1>
+        <p class="sub">${myGodowns.length ? esc(myGodowns.map(g => g.name).join(" · ")) : "No godown assigned yet"}</p>
+      </div>
+      ${setupNeeded()}
+      <div class="big-actions">
+        <a class="big-act" href="#/receive">${ICON.inward}<span>Inward</span><small>Coffee arriving</small></a>
+        <a class="big-act main" href="#/dispatch/new">${ICON.truck}<span>New despatch</span><small>Load a truck</small></a>
+        <button type="button" class="big-act" data-home-scan>${ICON.scan}<span>Scan a bag</span><small>Check a label</small></button>
+      </div>
+      <div class="tiles tiles-3">
+        <div class="tile"><div class="tile-label">Arrived today</div><div class="tile-value">${num(arrived)} <small>bags</small></div></div>
+        <div class="tile"><div class="tile-label">Despatched today</div><div class="tile-value">${num(despatched)} <small>bags</small></div></div>
+        <div class="tile"><div class="tile-label">Being loaded</div><div class="tile-value">${loading.length} <small>despatch${loading.length === 1 ? "" : "es"}</small></div></div>
+      </div>
+      <section class="card flush"><h2>Being loaded</h2>
+        ${loading.length ? dispatchTable(loading) : `<div class="empty">Nothing is being loaded right now.</div>`}</section>
+      <section class="card"><h2>In my godowns</h2>
+        ${stock.length ? `<table class="tbl"><thead><tr><th>Godown</th><th class="r">In stock</th></tr></thead><tbody>
+          ${stock.map(r => `<tr><td><a href="#/stock?g=${esc(r.id)}">${esc(r.name)}</a></td><td class="r num">${qty(r.grams, r.bags)}</td></tr>`).join("")}
+        </tbody></table>` : `<div class="empty">No godowns assigned.</div>`}</section>
+      <section class="card flush"><h2>Today</h2>
+        ${todays.length ? txnTable(todays) : `<div class="empty">No entries in your godowns yet today.</div>`}</section>`;
+  }
+
+  function overviewHome(d, txns) {
     const empty = !M.godowns.length && !M.items.length;
     return `
       <div class="page-head">
         <div><h1>Dashboard</h1><p class="sub">Coffee in your godowns, and what has gone out to clients.</p></div>
         ${can.post() ? `<div class="actions"><a class="btn" href="#/receive">+ Inward</a><a class="btn primary" href="#/dispatch/new">+ New despatch</a></div>` : ""}
       </div>
-      ${empty ? `<div class="notice">Nothing set up yet. ${can.manage() ? `Add your <a href="#/masters/godowns">godowns</a>, <a href="#/masters/items">coffee items</a> and <a href="#/masters/clients">clients</a> to begin.` : "Ask a manager to add godowns, coffee items and clients."}</div>` : ""}
+      ${empty ? `<div class="notice">Nothing set up yet. ${can.manage() ? `Add your <a href="#/masters/godowns">godowns</a>, <a href="#/masters/items">coffee</a> and <a href="#/masters/clients">clients</a> to begin.` : "Ask a manager to add godowns, coffee and clients."}</div>` : ""}
       <div class="tiles">
         <div class="tile"><div class="tile-label">Stock in godowns</div><div class="tile-value">${num(d.onHandBags)} <small>bags</small></div><div class="tile-foot">${kg(d.onHandGrams)} kg</div></div>
         <div class="tile"><div class="tile-label">Held for loading</div><div class="tile-value">${num(d.reservedBags)} <small>bags</small></div><div class="tile-foot">${kg(d.reservedGrams)} kg · ${d.draftCount} despatch${d.draftCount === 1 ? "" : "es"} loading</div></div>
@@ -200,25 +294,93 @@
         <div class="tile"><div class="tile-label">Lots in stock</div><div class="tile-value">${d.lotsInStock}</div><div class="tile-foot">${active(M.godowns).length} godowns</div></div>
       </div>
       <div class="grid-2">
-        <section class="card">
-          <h2>By godown</h2>
-          ${d.byGodown.length ? `<table class="tbl"><thead><tr><th>Godown</th><th class="r">In stock</th></tr></thead><tbody>
-            ${d.byGodown.map(r => `<tr><td><a href="#/stock?g=${esc(r.id)}">${esc(r.name)}</a></td><td class="r num">${qty(r.grams, r.bags)}</td></tr>`).join("")}
-          </tbody></table>` : `<div class="empty">No godowns yet.</div>`}
-        </section>
-        <section class="card">
-          <h2>By coffee item</h2>
-          ${d.byItem.length ? `<table class="tbl"><thead><tr><th>Coffee</th><th class="r">In stock</th></tr></thead><tbody>
-            ${d.byItem.map(r => `<tr><td>${esc(r.name)}<div class="muted">${esc(itemMeta(r))}</div></td><td class="r num">${qty(r.grams, r.bags)}</td></tr>`).join("")}
-          </tbody></table>` : `<div class="empty">No stock yet.</div>`}
-        </section>
+        <section class="card"><h2>Despatched per month</h2><p class="chart-sub">Bags sent to clients, last 6 months</p>${columnChart(d.despatchTrend)}</section>
+        <section class="card"><h2>Stock by coffee</h2><p class="chart-sub">Bags in all godowns</p>${barList(d.byItem.map(r => ({ name: r.name, meta: itemMeta(r), bags: r.bags, grams: r.grams })), "No stock yet.")}</section>
       </div>
-      ${d.drafts.length ? `<section class="card flush"><h2>Despatches being loaded</h2>${dispatchTable(d.drafts)}</section>` : ""}
+      <div class="grid-2">
+        <section class="card"><h2>Stock by godown</h2><p class="chart-sub">Bags in each godown</p>${barList(d.byGodown.map(r => ({ name: r.name, href: `#/stock?g=${r.id}`, bags: r.bags, grams: r.grams })), "No godowns yet.")}</section>
+        <section class="card"><h2>Being loaded</h2>
+          ${d.drafts.length ? `<ul class="mini-list">${d.drafts.map(x => `<li><a class="mono" href="#/dispatch/${esc(x.id)}">${esc(x.no)}</a><span>${esc(x.clientName)}</span><span class="num">${num(x.bags)} bags</span></li>`).join("")}</ul>`
+            : `<div class="empty">Nothing is being loaded right now.</div>`}</section>
+      </div>
       <section class="card flush">
         <h2>Recent activity</h2>
-        ${tx.transactions.length ? txnTable(tx.transactions) : `<div class="empty">No stock entries yet.</div>`}
+        ${txns.length ? txnTable(txns) : `<div class="empty">No stock entries yet.</div>`}
       </section>`;
   }
+
+  /* ---------- charts (single series: caramel bars, values in text colours) ---------- */
+
+  // Rounds a maximum up to a clean axis top (1, 2, 2.5, 5 × 10^n).
+  function niceMax(v) {
+    if (v <= 0) return 10;
+    const p = 10 ** Math.floor(Math.log10(v));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+    return 10 * p;
+  }
+
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthName = m => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
+
+  function columnChart(rows) {
+    if (!rows.some(r => r.bags)) return `<div class="empty">No despatches in the last 6 months.</div>`;
+    const W = 360, H = 200, L = 40, Rm = 8, T = 24, B = 26;
+    const top = niceMax(Math.max(...rows.map(r => r.bags)));
+    const ticks = [0, top / 2, top];
+    const band = (W - L - Rm) / rows.length, bw = Math.min(24, band * 0.5);
+    const y = v => T + (H - T - B) * (1 - v / top);
+    const last = rows.length - 1;
+    const bars = rows.map((r, i) => {
+      const x = L + band * i + (band - bw) / 2, yt = y(r.bags), h = H - B - yt, rad = Math.min(4, h);
+      const shape = h > 0 ? `<path class="bar" d="M${x} ${H - B}V${yt + rad}q0 -${rad} ${rad} -${rad}h${bw - 2 * rad}q${rad} 0 ${rad} ${rad}V${H - B}z"/>` : "";
+      const tip = `${monthName(r.month)}: ${num(r.bags)} bags · ${kg(r.grams)} kg`;
+      return `<g class="col" tabindex="0" data-tip="${esc(tip)}" aria-label="${esc(tip)}">
+        <rect class="hit" x="${L + band * i}" y="${T}" width="${band}" height="${H - T - B}"/>${shape}
+        ${i === last && r.bags ? `<text class="val" x="${x + bw / 2}" y="${yt - 6}" text-anchor="middle">${num(r.bags)}</text>` : ""}
+        <text class="tick" x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${monthName(r.month)}</text></g>`;
+    }).join("");
+    const grid = ticks.map(t => `<line class="grid" x1="${L}" x2="${W - Rm}" y1="${y(t)}" y2="${y(t)}"/><text class="tick" x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${num(t)}</text>`).join("");
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Bags despatched per month, last 6 months">${grid}${bars}</svg>
+      <details class="chart-table"><summary>Show as table</summary><table class="tbl"><thead><tr><th>Month</th><th class="r">Bags</th><th class="r">kg</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${monthName(r.month)}</td><td class="r num">${num(r.bags)}</td><td class="r num">${kg(r.grams)}</td></tr>`).join("")}</tbody></table></details>`;
+  }
+
+  function barList(rows, emptyText) {
+    const shown = rows.filter(r => r.bags > 0).sort((a, b) => b.bags - a.bags);
+    if (!shown.length) return `<div class="empty">${esc(emptyText)}</div>`;
+    const max = Math.max(...shown.map(r => r.bags));
+    return `<div class="barlist">${shown.map(r => {
+      const tip = `${r.name}: ${num(r.bags)} bags · ${kg(r.grams)} kg`;
+      return `<div class="bl-row" tabindex="0" data-tip="${esc(tip)}">
+        <div class="bl-name">${r.href ? `<a href="${esc(r.href)}">${esc(r.name)}</a>` : esc(r.name)}${r.meta ? `<span class="muted"> · ${esc(r.meta)}</span>` : ""}</div>
+        <div class="bl-track"><span class="bl-bar" style="width:${Math.max(1, (r.bags / max) * 100) * 0.82}%"></span><span class="bl-val num">${num(r.bags)} bags</span></div></div>`;
+    }).join("")}</div>`;
+  }
+
+  // One tooltip for every chart: follows the pointer, and shows on keyboard focus.
+  const chartTip = document.createElement("div");
+  chartTip.className = "chart-tip";
+  chartTip.hidden = true;
+  document.body.appendChild(chartTip);
+  function showTip(el, x, y) {
+    chartTip.textContent = el.dataset.tip;
+    chartTip.hidden = false;
+    const w = chartTip.offsetWidth;
+    chartTip.style.left = `${Math.min(window.innerWidth - w - 8, Math.max(8, x - w / 2))}px`;
+    chartTip.style.top = `${y - chartTip.offsetHeight - 12 + window.scrollY}px`;
+  }
+  view.addEventListener("pointermove", e => {
+    const el = e.target.closest("[data-tip]");
+    if (el) showTip(el, e.clientX, e.clientY); else chartTip.hidden = true;
+  });
+  view.addEventListener("pointerleave", () => { chartTip.hidden = true; });
+  view.addEventListener("focusin", e => {
+    const el = e.target.closest("[data-tip]");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    showTip(el, r.left + r.width / 2, r.top);
+  });
+  view.addEventListener("focusout", () => { chartTip.hidden = true; });
 
   /* ---------- stock ---------- */
 
@@ -488,9 +650,14 @@
       document.getElementById("ledgerList").addEventListener("click", async e => {
         const btn = e.target.closest("[data-reverse]");
         if (!btn) return;
-        const reason = prompt(`Undo ${btn.dataset.no}? An opposite entry is recorded and both stay in the register. Reason:`);
-        if (reason == null) return;
-        if (await attempt(() => Api.post(`/transactions/${btn.dataset.reverse}/reverse`, { reason }), `${btn.dataset.no} undone`, btn)) render();
+        const ok = await ask({
+          title: `Undo ${btn.dataset.no}?`,
+          body: `<p>An opposite entry is recorded and both stay in the stock register. Use this for an entry made by mistake.</p>`,
+          confirm: "Undo entry", danger: true,
+          reasons: ["Entered twice", "Wrong quantity", "Wrong godown", "Wrong lot or coffee", "Other"], reasonRequired: true
+        });
+        if (!ok) return;
+        if (await attempt(() => Api.post(`/transactions/${btn.dataset.reverse}/reverse`, { reason: ok.reason }), `${btn.dataset.no} undone`, btn)) render();
       });
       const more = document.getElementById("moreTxn");
       if (more) more.addEventListener("click", async () => {
@@ -642,16 +809,33 @@
         if (!btn) return;
         const act = btn.dataset.act;
         if (act === "post") {
-          if (!confirm(`Truck left? Confirm despatch ${d.no}: ${pk.length} bag label(s) become final and the stock is deducted.`)) return;
+          const ok = await ask({
+            title: "Truck left?",
+            body: `<p>Confirm despatch <b class="mono">${esc(d.no)}</b> to <b>${esc(c.name)}</b>${d.vehicleNo ? ` on <b class="mono">${esc(d.vehicleNo)}</b>` : ""}.</p>
+              <p class="dlg-qty">${qty(tot.grams, tot.bags)}<span class="muted"> · ${pk.length} label${pk.length === 1 ? "" : "s"}</span></p>
+              <p class="muted">The stock is deducted from the godown and the labels become final.</p>`,
+            confirm: "Yes, truck left", back: "Not yet"
+          });
+          if (!ok) return;
           update(await attempt(() => Api.post(`/dispatches/${d.id}/post`), `${d.no} despatched`, btn));
         } else if (act === "cancel") {
-          const reason = prompt(`Cancel ${d.no}? The held stock is released and its labels cancelled. Reason (optional):`);
-          if (reason == null) return;
-          update(await attempt(() => Api.post(`/dispatches/${d.id}/cancel`, { reason }), "Despatch cancelled", btn));
+          const ok = await ask({
+            title: `Cancel ${d.no}?`,
+            body: `<p>The held stock is released for other use and its ${pk.length} label${pk.length === 1 ? " is" : "s are"} cancelled. Printed labels for it should be thrown away.</p>`,
+            confirm: "Cancel despatch", back: "Keep it", danger: true,
+            reasons: ["Client postponed", "Wrong details \u2014 starting again", "Stock not ready", "Other"]
+          });
+          if (!ok) return;
+          update(await attempt(() => Api.post(`/dispatches/${d.id}/cancel`, { reason: ok.reason }), "Despatch cancelled", btn));
         } else if (act === "reverse") {
-          const reason = prompt(`Undo ${d.no}? Only if the coffee did NOT leave. Stock goes back to the godown and the labels are cancelled. Reason:`);
-          if (reason == null) return;
-          update(await attempt(() => Api.post(`/dispatches/${d.id}/reverse`, { reason }), `${d.no} undone`, btn));
+          const ok = await ask({
+            title: `Undo despatch ${d.no}?`,
+            body: `<p>Only if the coffee did <b>not</b> leave. ${num(tot.bags)} bags (${kg(tot.grams)} kg) go back to the godown and the labels are cancelled.</p>`,
+            confirm: "Undo despatch", danger: true,
+            reasons: ["Truck did not leave", "Confirmed by mistake", "Other"], reasonRequired: true
+          });
+          if (!ok) return;
+          update(await attempt(() => Api.post(`/dispatches/${d.id}/reverse`, { reason: ok.reason }), `${d.no} undone`, btn));
         } else if (act === "labels") printLabels(d, pk);
         else if (act === "note") printDispatchNote(d);
       });
