@@ -152,6 +152,30 @@ npm test          # API integration tests (starts its own Worker + throwaway D1)
 npm run typecheck
 ```
 
+## Demo data and rule checks
+
+`scripts/seed-demo.mjs` fills a site with six months of demo data through the API, as real users would, and checks every rule on the way: 28 checks such as no overdrawing, stock held for loading, bag weights adding up, undo only once, operator godown limits, viewer read-only, disabled users, mistyped barcodes and simultaneous transfers. It prints PASS/FAIL for each check, and the demo users' logins.
+
+```bash
+npm run seed:demo -- --url https://estate.oneuptech.co --login <admin login>   # asks for the password
+npm run seed:demo -- --url http://localhost:8787 --login admin --password localpass123
+```
+
+Everything it adds is named "(demo)" and coded `DEMO-…`, and it refuses to run twice. Stock entries can't be deleted, only undone, so on the live site the demo stock stays in the history. Before real use, start from an empty database (see *Starting again with an empty database*) or make the demo godowns, coffee, clients and users inactive.
+
+## Starting again with an empty database
+
+Deletes **all** data on the live site, including users:
+
+```bash
+npx wrangler d1 execute estate-db --remote --command "SELECT 1"   # check you're on the right account
+npx wrangler d1 delete estate-db
+npx wrangler d1 create estate-db                                    # paste the new database_id into wrangler.jsonc
+npm run db:migrate:remote
+npm run user:create:remote -- --org "Your Estate Name" --login you@example.com --name "Your Name" --role admin
+npm run deploy
+```
+
 ## Changing the database
 
 1. Edit `drizzle/schema.ts`.

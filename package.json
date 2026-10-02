@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "OneUpTech Estate — coffee stock, client dispatch and package barcodes",
+  "description": "OneUpTech Estate \u2014 coffee stock, client dispatch and package barcodes",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler d1 migrations apply estate-db --remote && wrangler deploy",
@@ -17,7 +17,8 @@
     "user:list:local": "node scripts/create-user.mjs --local --list",
     "user:list:remote": "node scripts/create-user.mjs --remote --list",
     "user:reset:local": "node scripts/create-user.mjs --local --reset",
-    "user:reset:remote": "node scripts/create-user.mjs --remote --reset"
+    "user:reset:remote": "node scripts/create-user.mjs --remote --reset",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.7",
