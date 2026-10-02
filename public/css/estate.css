@@ -108,22 +108,29 @@ h1 .mono, h1.mono { font-family: var(--mono); font-size: 22px; font-weight: 600;
 .w-oneup { color: var(--word-oneup); font-weight: 800; letter-spacing: -.02em; }
 .w-estate { color: var(--word-estate); font-weight: 800; letter-spacing: -.01em; }
 
-/* ---------- sign-in ---------- */
-.login-screen {
-  min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+/* ---------- sign-in: estate scene on the left, sign-in card on the right ---------- */
+.login-screen { min-height: 100vh; display: grid; grid-template-columns: 55fr 45fr; background: var(--bg); }
+.login-art { position: relative; overflow: hidden; background: #3f6e3e; }
+.login-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
+.art-caption { position: absolute; left: clamp(24px, 5vw, 64px); right: 24px; bottom: clamp(28px, 6vh, 64px); color: #fffaf1; text-shadow: 0 1px 12px rgba(20, 12, 4, .45); }
+.art-tag { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 3.6vw, 52px); line-height: 1.04; letter-spacing: .01em; }
+.art-tag::after { content: ""; display: block; width: 72px; height: 4px; border-radius: 2px; background: var(--gold-500); margin-top: 18px; }
+.art-sub { margin-top: 14px; font-size: 15px; font-weight: 500; opacity: .92; }
+.login-side {
+  display: grid; place-items: center; padding: 32px 24px;
   background:
-    radial-gradient(1100px 520px at 0% -10%, rgba(125, 85, 31, .16), transparent 60%),
-    radial-gradient(900px 520px at 110% 110%, rgba(19, 161, 150, .10), transparent 60%),
+    radial-gradient(700px 420px at 100% 0%, rgba(125, 85, 31, .12), transparent 60%),
+    radial-gradient(600px 420px at 100% 100%, rgba(19, 161, 150, .08), transparent 60%),
     var(--bg);
 }
-.login-card { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 20px 50px rgba(23, 27, 56, .10); padding: 32px 30px 22px; }
-.logo-lockup { display: flex; align-items: center; gap: 14px; }
-.logo-marks { display: flex; align-items: center; gap: 6px; }
-.logo-marks .m1u { width: 74px; height: 58px; }
-.logo-marks .mbean { width: 34px; height: 46px; }
-.logo-words { display: flex; flex-direction: column; line-height: 1.02; font-size: 26px; }
-.tagline { margin: 16px 0 0 2px; font-size: 13px; font-weight: 600; letter-spacing: .14em; color: var(--grey-500); line-height: 1.5; }
-.gold-rule { height: 3px; background: var(--gold-500); border-radius: 2px; margin: 16px 0 22px; }
+.login-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 20px 50px rgba(23, 27, 56, .10); padding: 36px 34px 24px; }
+.logo-lockup { display: flex; align-items: center; gap: 16px; }
+.logo-marks { display: flex; align-items: center; gap: 7px; }
+.logo-marks .m1u { width: 96px; height: 76px; }
+.logo-marks .mbean { width: 42px; height: 58px; }
+.logo-words { display: flex; flex-direction: column; line-height: 1.02; font-size: 33px; }
+.gold-rule { height: 3px; background: var(--gold-500); border-radius: 2px; margin: 20px 0 20px; }
+.login-title { font-family: var(--display); font-size: 22px; margin: 0 0 14px; }
 .login-form { display: grid; gap: 14px; }
 .form-error { color: var(--red); font-size: 13px; min-height: 0; }
 .form-error:empty { display: none; }
@@ -456,8 +463,18 @@ body.scanning { overflow: hidden; }
   .tiles-3 .tile-value { font-size: 22px; }
   .tiles-3 .tile-value small { display: block; font-size: 11.5px; }
   .dlg-actions .btn { flex: 1 1 auto; }
-  .login-card { padding: 26px 20px 18px; }
-  .logo-words { font-size: 23px; }
+  /* Phone: the scene becomes a band across the top; the card overlaps its lower edge. */
+  .login-screen { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .login-art { height: 34vh; min-height: 200px; }
+  .art-caption { bottom: 52px; left: 20px; }
+  .art-tag { font-size: 24px; }
+  .art-tag::after { width: 48px; height: 3px; margin-top: 10px; }
+  .art-sub { display: none; }
+  .login-side { place-items: start center; padding: 0 16px 24px; }
+  .login-card { margin-top: -36px; position: relative; padding: 24px 20px 18px; }
+  .logo-marks .m1u { width: 74px; height: 58px; }
+  .logo-marks .mbean { width: 33px; height: 45px; }
+  .logo-words { font-size: 26px; }
 }
 
 /* ==========================================================================
@@ -515,3 +532,8 @@ body.scanning { overflow: hidden; }
 .nt-pkg-code svg { width: 52mm; height: 10mm; display: block; }
 .nt-sign { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 40px; }
 .nt-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 9pt; text-align: center; }
+
+/* The estate scene, a little dimmer at night so the sign-in card stays the brightest thing. */
+@media (prefers-color-scheme: dark) {
+  .login-art img { filter: brightness(.78) saturate(.9); }
+}
