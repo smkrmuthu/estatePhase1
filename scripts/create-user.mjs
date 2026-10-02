@@ -33,8 +33,11 @@ const name = (opt('name') || '').trim();
 const role = opt('role', 'admin');
 const orgName = opt('org', 'OneUpTech Estate');
 const persist = opt('persist-to');
+// The demo site (wrangler env "demo") has its own database: --env demo --db estate-demo-db.
+const envName = opt('env');
+const dbName = opt('db', 'estate-db');
 
-const wranglerArgs = (extra) => ['wrangler', 'd1', 'execute', 'estate-db', target, ...extra, ...(persist ? ['--persist-to', persist] : [])];
+const wranglerArgs = (extra) => ['wrangler', 'd1', 'execute', dbName, target, ...extra, ...(persist ? ['--persist-to', persist] : []), ...(envName ? ['--env', envName] : [])];
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
 function query(sql) {

@@ -161,7 +161,26 @@ npm run seed:demo -- --url https://estate.oneuptech.co --login <admin login>   #
 npm run seed:demo -- --url http://localhost:8787 --login admin --password localpass123
 ```
 
-Everything it adds is named "(demo)" and coded `DEMO-…`, and it refuses to run twice. Stock entries can't be deleted, only undone, so on the live site the demo stock stays in the history. Before real use, start from an empty database (see *Starting again with an empty database*) or make the demo godowns, coffee, clients and users inactive.
+Everything it adds is named "(demo)" and coded `DEMO-…`, and it refuses to run twice. Stock entries can't be deleted, only undone, so run it on the **demo site** below, not the live one.
+
+## Demo site (estate-demo.oneuptech.co)
+
+A separate copy for testing and training: same code, its own Worker (`estate-demo`), database (`estate-demo-db`) and address, so nothing done there touches live data. Defined as `env.demo` in `wrangler.jsonc`.
+
+One-time setup, from the laptop used for the live site:
+
+```bash
+git pull
+npm install
+npm run demo:setup -- --login demo.admin     # asks for a password for demo.admin
+git commit -am "Demo site database ID" && git push
+```
+
+That creates the database (and saves its ID in `wrangler.jsonc`), creates the tables, deploys, sets a random sign-in secret, creates the admin `demo.admin`, waits for the address to come up, then fills it with demo data and runs the 28 checks. Running it again skips what is already done.
+
+After code changes, update the demo site with `npm run demo:deploy` (the live site still uses `npm run deploy`). Demo users: `npm run user:list:remote -- --env demo --db estate-demo-db`; reset a password with `npm run user:reset:remote -- --env demo --db estate-demo-db --login <login>`.
+
+To empty the demo site and start again: `npx wrangler d1 delete estate-demo-db`, remove its `database_id` line from `wrangler.jsonc`, and run `npm run demo:setup` again.
 
 ## Starting again with an empty database
 

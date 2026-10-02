@@ -26,6 +26,23 @@
   "routes": [
     { "pattern": "estate.oneuptech.co", "custom_domain": true }
   ],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // Demo / test site: same code, its own Worker, database and address. Set up with
+  // `npm run demo:setup`; deploy updates with `npm run demo:deploy`. See README → Demo site.
+  "env": {
+    "demo": {
+      "name": "estate-demo",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "estate-demo-db",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "routes": [
+        { "pattern": "estate-demo.oneuptech.co", "custom_domain": true }
+      ]
+    }
+  }
   // JWT_SECRET is NOT set here — it's a secret: `npx wrangler secret put JWT_SECRET`.
 }
