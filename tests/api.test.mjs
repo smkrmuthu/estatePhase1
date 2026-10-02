@@ -114,6 +114,10 @@ test('transfer moves stock and refuses to overdraw', async () => {
 
 test('adjustment needs a reason; reversal blocked once stock has moved on', async () => {
   assert.equal((await api(S.admin, 'POST', '/adjustments', { date: today, locationId: S.g1, lotId: S.lot, direction: 'OUT', grams: 500, bags: 0, reason: 'nope' })).status, 422);
+  // Reasons belong to a direction: a gain can't be a write-off.
+  assert.equal((await api(S.admin, 'POST', '/adjustments', { date: today, locationId: S.g1, lotId: S.lot, direction: 'IN', grams: 500, bags: 0, reason: 'Pest / mould write-off' })).status, 422);
+  const reasons = (await api(S.admin, 'GET', '/reference/adjustment-reasons')).body.reasons;
+  assert.ok(reasons.IN.includes('Sample returned') && !reasons.IN.includes('Spillage / bag damage'));
   const a = await api(S.admin, 'POST', '/adjustments', { date: today, locationId: S.g1, lotId: S.lot, direction: 'OUT', grams: 500, bags: 0, reason: 'Moisture / storage weight loss' });
   assert.equal(a.status, 201);
   assert.equal((await bal(S.admin, S.g1, S.lot)).onHandGrams, 800_000);

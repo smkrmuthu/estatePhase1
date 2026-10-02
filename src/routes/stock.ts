@@ -15,14 +15,23 @@ stockRoutes.use('*', requireAuth);
 
 const poster = requireRole('admin', 'manager', 'operator');
 
-export const ADJUSTMENT_REASONS = [
-  'Moisture / storage weight loss',
-  'Sampling / quality draw',
-  'Spillage / bag damage',
-  'Pest / mould write-off',
-  'Physical count correction',
-  'Other'
-];
+// Each direction has its own reasons: a loss can't be a "sample returned", nor a gain a write-off.
+export const ADJUSTMENT_REASONS: Record<'OUT' | 'IN', string[]> = {
+  OUT: [
+    'Moisture / storage weight loss',
+    'Sampling / quality draw',
+    'Spillage / bag damage',
+    'Pest / mould write-off',
+    'Physical count correction (short)',
+    'Other'
+  ],
+  IN: [
+    'Moisture gain in storage',
+    'Sample returned',
+    'Physical count correction (extra found)',
+    'Other'
+  ]
+};
 
 function notFuture(date: string) {
   // One day of slack for time zones.
@@ -177,11 +186,14 @@ stockRoutes.post('/adjustments', requireRole('admin', 'manager'), async (c) => {
   const auth = c.get('auth');
   const input = await body(c, z.object({
     date: isoDate, locationId: id, lotId: id, direction: z.enum(['IN', 'OUT']),
-    grams: z.number().int().min(0).max(1e12), bags, reason: z.enum(ADJUSTMENT_REASONS as [string, ...string[]]),
+    grams: z.number().int().min(0).max(1e12), bags, reason: z.string().trim().min(1, 'Choose a reason'),
     reference: text(80), notes: text(300)
   }));
   notFuture(input.date);
   if (input.grams === 0 && input.bags === 0) throw invalid('Enter a kg or bag change');
+  if (!ADJUSTMENT_REASONS[input.direction].includes(input.reason)) {
+    throw invalid(`"${input.reason}" is not a reason for ${input.direction === 'IN' ? 'an increase' : 'a decrease'}`, 'reason');
+  }
   if (input.reason === 'Other' && !input.notes) throw invalid('Notes are required when the reason is Other', 'notes');
   const db = c.env.DB;
   await requireLocation(db, auth.orgId, input.locationId);

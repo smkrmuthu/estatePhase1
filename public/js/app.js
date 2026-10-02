@@ -586,12 +586,15 @@
       const f = document.getElementById("adjustForm");
       f.locationId.addEventListener("change", () => fillLotPicker(f.lotId, f.locationId.value, { includeEmpty: true }));
       fillLotPicker(f.lotId, f.locationId.value, { includeEmpty: true });
+      // The reason list follows the direction: losses and gains have different reasons.
+      const fillReasons = () => { f.reason.innerHTML = plainOptions(reasons[f.direction.value] || [], "", "Select reason"); };
+      f.querySelectorAll("[name=direction]").forEach(r => r.addEventListener("change", fillReasons));
       f.addEventListener("submit", async e => {
         e.preventDefault();
         const d = formData(f);
         const body = { date: d.date, locationId: d.locationId, lotId: d.lotId, direction: d.direction, grams: toGrams(d.kg || 0), bags: Number(d.bags || 0), reason: d.reason, reference: d.reference, notes: d.notes };
         const r = await attempt(() => Api.post("/adjustments", body), "Adjustment saved", f.querySelector("[type=submit]"));
-        if (r) { f.reset(); f.date.value = today(); fillLotPicker(f.lotId, f.locationId.value, { includeEmpty: true }); showPosted(r.no); }
+        if (r) { f.reset(); f.date.value = today(); fillLotPicker(f.lotId, f.locationId.value, { includeEmpty: true }); fillReasons(); showPosted(r.no); }
       });
     });
     return `
@@ -609,7 +612,7 @@
           </fieldset>
           <label>Bags<input type="number" name="bags" min="0" step="1" value="0"></label>
           <label>Weight (kg)<input type="number" name="kg" min="0" step="0.001" value="0"></label>
-          <label class="span-2">Reason<select name="reason" required>${plainOptions(reasons, "", "Select reason")}</select></label>
+          <label class="span-2">Reason<select name="reason" required>${plainOptions(reasons.OUT, "", "Select reason")}</select></label>
           <label class="span-2">Reference<input name="reference" maxlength="80"></label>
           <label class="span-2">Notes<textarea name="notes" rows="2" maxlength="300"></textarea></label>
         </div>

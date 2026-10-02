@@ -292,7 +292,7 @@ await adj(day(4, 25), G.estate, L.A1.lotId, 'OUT', 0, 38.5, 'Moisture / storage 
 await adj(day(3, 8), G.estate, L.A2.lotId, 'OUT', 0, 2, 'Sampling / quality draw', 'Cup test for Malabar Exports');
 await adj(day(2, 5), G.curing, L.R1.lotId, 'OUT', 1, 60, 'Spillage / bag damage', 'Bag torn while stacking');
 await adj(day(2, 22), G.town, L.R2.lotId, 'OUT', 2, 100, 'Pest / mould write-off');
-await adj(day(1, 28), G.town, L.R2.lotId, 'IN', 1, 50, 'Physical count correction', 'Monthly count found one extra bag');
+await adj(day(1, 28), G.town, L.R2.lotId, 'IN', 1, 50, 'Physical count correction (extra found)', 'Monthly count found one extra bag');
 const wrongAdj = await adj(day(1, 28), G.estate, L.A2.lotId, 'OUT', 0, 5, 'Other', 'Entered against the wrong lot');
 await must('Undo the wrong adjustment', mgr, 'POST', `/transactions/${wrongAdj.id}/reverse`, { reason: 'Wrong lot' });
 await refused('The same entry cannot be undone twice', 409, mgr, 'POST', `/transactions/${wrongAdj.id}/reverse`, { reason: 'Again' });
