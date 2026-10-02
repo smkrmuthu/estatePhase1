@@ -132,7 +132,7 @@
   }
 
   const lotOption = (b, selected) =>
-    `<option value="${esc(b.lotId)}" data-item="${esc(b.itemId)}" ${b.lotId === selected ? "selected" : ""}>${esc(b.lotCode)} — ${esc(item(b.itemId).name)} (${kg(b.availableGrams)} kg, ${num(b.availableBags)} bags free)</option>`;
+    `<option value="${esc(b.lotId)}" data-item="${esc(b.itemId)}" ${b.lotId === selected ? "selected" : ""}>${esc(b.lotCode)} — ${esc(item(b.itemId).name)} (${num(b.availableBags)} bags · ${kg(b.availableGrams)} kg free)</option>`;
 
   const query = () => new URLSearchParams(location.hash.split("?")[1] || "");
 
@@ -550,14 +550,27 @@
     if (!can.post()) return `<div class="empty">Your role cannot record stock.</div>`;
     then(() => {
       const f = document.getElementById("transferForm");
-      f.fromLocationId.addEventListener("change", () => fillLotPicker(f.lotId, f.fromLocationId.value));
+      // "To" never offers the "From" godown: a transfer to the same godown moves nothing.
+      const fillTo = () => {
+        const keep = f.toLocationId.value === f.fromLocationId.value ? "" : f.toLocationId.value;
+        f.toLocationId.innerHTML = options(active(M.godowns).filter(g => g.id !== f.fromLocationId.value), keep, g => g.name, "Select");
+      };
+      f.fromLocationId.addEventListener("change", () => { fillTo(); fillLotPicker(f.lotId, f.fromLocationId.value); });
+      fillTo();
       fillLotPicker(f.lotId, f.fromLocationId.value);
+      // Bags fill the kg from the coffee's standard bag weight, until the kg is typed.
+      f.addEventListener("input", e => {
+        if (e.target === f.kg) f.kg.dataset.touched = "1";
+        if (e.target !== f.bags || f.kg.dataset.touched) return;
+        const it = item(f.lotId.selectedOptions[0]?.dataset.item);
+        if (it && it.bagGrams) f.kg.value = (Number(f.bags.value || 0) * it.bagGrams) / 1000 || "";
+      });
       f.addEventListener("submit", async e => {
         e.preventDefault();
         const d = formData(f);
         const body = { date: d.date, fromLocationId: d.fromLocationId, toLocationId: d.toLocationId, lotId: d.lotId, grams: toGrams(d.kg), bags: Number(d.bags || 0), reference: d.reference, notes: d.notes };
         const r = await attempt(() => Api.post("/transfers", body), "Transfer saved", f.querySelector("[type=submit]"));
-        if (r) { f.reset(); f.date.value = today(); fillLotPicker(f.lotId, f.fromLocationId.value); showPosted(r.no); }
+        if (r) { f.reset(); delete f.kg.dataset.touched; f.date.value = today(); fillTo(); fillLotPicker(f.lotId, f.fromLocationId.value); showPosted(r.no); }
       });
     });
     return `
