@@ -109,7 +109,7 @@ h1 .mono, h1.mono { font-family: var(--mono); font-size: 22px; font-weight: 600;
 .w-estate { color: var(--word-estate); font-weight: 800; letter-spacing: -.01em; }
 
 /* ---------- sign-in: estate scene on the left, sign-in card on the right ---------- */
-.login-screen { min-height: 100vh; display: grid; grid-template-columns: 55fr 45fr; background: var(--bg); }
+.login-screen { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 55fr) minmax(0, 45fr); background: var(--bg); overflow-x: hidden; }
 .login-art { position: relative; overflow: hidden; background: #3f6e3e; }
 .login-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
 .art-caption { position: absolute; left: clamp(24px, 5vw, 64px); right: 24px; bottom: clamp(28px, 6vh, 64px); color: #fffaf1; text-shadow: 0 1px 12px rgba(20, 12, 4, .45); }
@@ -117,13 +117,13 @@ h1 .mono, h1.mono { font-family: var(--mono); font-size: 22px; font-weight: 600;
 .art-tag::after { content: ""; display: block; width: 72px; height: 4px; border-radius: 2px; background: var(--gold-500); margin-top: 18px; }
 .art-sub { margin-top: 14px; font-size: 15px; font-weight: 500; opacity: .92; }
 .login-side {
-  display: grid; place-items: center; padding: 32px 24px;
+  display: grid; place-items: center; padding: 32px 24px; min-width: 0;
   background:
     radial-gradient(700px 420px at 100% 0%, rgba(125, 85, 31, .12), transparent 60%),
     radial-gradient(600px 420px at 100% 100%, rgba(19, 161, 150, .08), transparent 60%),
     var(--bg);
 }
-.login-card { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 20px 50px rgba(23, 27, 56, .10); padding: 36px 34px 24px; }
+.login-card { width: 100%; max-width: 420px; min-width: 0; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 20px 50px rgba(23, 27, 56, .10); padding: 36px 34px 24px; }
 .logo-lockup { display: flex; align-items: center; gap: 16px; }
 .logo-marks { display: flex; align-items: center; gap: 7px; }
 .logo-marks .m1u { width: 96px; height: 76px; }
@@ -464,7 +464,7 @@ body.scanning { overflow: hidden; }
   .tiles-3 .tile-value small { display: block; font-size: 11.5px; }
   .dlg-actions .btn { flex: 1 1 auto; }
   /* Phone: the scene becomes a band across the top; the card overlaps its lower edge. */
-  .login-screen { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .login-screen { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .login-art { height: 34vh; min-height: 200px; }
   .art-caption { bottom: 52px; left: 20px; }
   .art-tag { font-size: 24px; }
@@ -474,7 +474,8 @@ body.scanning { overflow: hidden; }
   .login-card { margin-top: -36px; position: relative; padding: 24px 20px 18px; }
   .logo-marks .m1u { width: 74px; height: 58px; }
   .logo-marks .mbean { width: 33px; height: 45px; }
-  .logo-words { font-size: 26px; }
+  .logo-words { font-size: clamp(21px, 6.4vw, 26px); }
+  .login-form input { min-width: 0; width: 100%; }
 }
 
 /* ==========================================================================
