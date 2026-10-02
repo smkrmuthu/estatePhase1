@@ -18,7 +18,7 @@
       "binding": "DB",
       "database_name": "estate-db",
       // From `npx wrangler d1 create estate-db` (one-time, see README). Local dev ignores it.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "d995a1cf-2106-44c8-9af8-50f1196e4387",
       "migrations_dir": "migrations"
     }
   ],
