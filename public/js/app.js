@@ -131,8 +131,11 @@
     return "";
   }
 
+  // "left" when other lines of the same despatch already take some of this lot.
+  const lotLabel = (b, bags = b.availableBags, grams = b.availableGrams, shared = false) =>
+    `${b.lotCode} — ${item(b.itemId).name} (${num(Math.max(0, bags))} bags · ${kg(Math.max(0, grams))} kg ${shared ? "left" : "free"})`;
   const lotOption = (b, selected) =>
-    `<option value="${esc(b.lotId)}" data-item="${esc(b.itemId)}" ${b.lotId === selected ? "selected" : ""}>${esc(b.lotCode)} — ${esc(item(b.itemId).name)} (${num(b.availableBags)} bags · ${kg(b.availableGrams)} kg free)</option>`;
+    `<option value="${esc(b.lotId)}" data-item="${esc(b.itemId)}" ${b.lotId === selected ? "selected" : ""}>${esc(lotLabel(b))}</option>`;
 
   const query = () => new URLSearchParams(location.hash.split("?")[1] || "");
 
@@ -540,6 +543,7 @@
     try {
       const { balances } = await Api.get(`/stock/balances?${qs}`);
       const rows = balances.filter(b => includeEmpty || b.availableGrams > 0 || b.lotId === keep);
+      select._bal = Object.fromEntries(rows.map(b => [b.lotId, b]));
       select.innerHTML = `<option value="">${rows.length ? "Select lot" : "No stock in this godown"}</option>` + rows.map(b => lotOption(b, keep)).join("");
     } catch (e) {
       select.innerHTML = `<option value="">Could not load lots</option>`;
@@ -736,12 +740,33 @@
     then(() => {
       const f = document.getElementById("dispatchForm");
       const lines = document.getElementById("lines");
+      // Each lot list shows what is left after the other lines of this despatch take
+      // their share; a lot the other lines use up completely can't be picked again.
+      const refreshFree = () => {
+        const rows = [...lines.querySelectorAll("[data-line]")];
+        const v = rows.map(r => ({
+          godown: r.querySelector("[name=locationId]").value, lot: r.querySelector("[name=lotId]").value,
+          bags: Number(r.querySelector("[name=bags]").value || 0), grams: toGrams(r.querySelector("[name=kg]").value || 0)
+        }));
+        rows.forEach((r, i) => {
+          const sel = r.querySelector("[name=lotId]");
+          for (const o of sel.options) {
+            const b = sel._bal && sel._bal[o.value];
+            if (!b) continue;
+            const others = v.filter((x, j) => j !== i && x.godown === v[i].godown && x.lot === o.value);
+            const bags = b.availableBags - others.reduce((t, x) => t + x.bags, 0);
+            const grams = b.availableGrams - others.reduce((t, x) => t + x.grams, 0);
+            o.textContent = lotLabel(b, bags, grams, others.length > 0);
+            o.disabled = o.value !== sel.value && (bags <= 0 || grams <= 0);
+          }
+        });
+      };
       const fill = row => {
         const sel = row.querySelector("[name=lotId]");
-        return fillLotPicker(sel, row.querySelector("[name=locationId]").value, { exceptDispatch: d && d.id, keep: sel.value || sel.dataset.keep });
+        return fillLotPicker(sel, row.querySelector("[name=locationId]").value, { exceptDispatch: d && d.id, keep: sel.value || sel.dataset.keep }).then(refreshFree);
       };
       lines.querySelectorAll("[data-line]").forEach(fill);
-      lines.addEventListener("change", e => { if (e.target.name === "locationId") fill(e.target.closest("[data-line]")); });
+      lines.addEventListener("change", e => { if (e.target.name === "locationId") fill(e.target.closest("[data-line]")); else refreshFree(); });
       lines.addEventListener("input", e => {
         const row = e.target.closest("[data-line]");
         const kgEl = row.querySelector("[name=kg]");
@@ -751,8 +776,9 @@
         const it = opt && byId(M.items, opt.dataset.item);
         if (it && it.bagGrams) kgEl.value = (Number(e.target.value || 0) * it.bagGrams) / 1000 || "";
       });
+      lines.addEventListener("input", refreshFree); // after the kg fill above
       lines.addEventListener("click", e => {
-        if (e.target.matches("[data-remove]") && lines.children.length > 1) e.target.closest("[data-line]").remove();
+        if (e.target.matches("[data-remove]") && lines.children.length > 1) { e.target.closest("[data-line]").remove(); refreshFree(); }
       });
       document.getElementById("addLine").addEventListener("click", () => {
         lines.insertAdjacentHTML("beforeend", lineHtml());
