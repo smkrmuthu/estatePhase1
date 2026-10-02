@@ -50,7 +50,7 @@
   // Bags first (what the godown counts), kg underneath.
   const qty = (g, b, signed) => {
     const sign = v => (signed && v > 0 ? "+" : "");
-    return `<span class="q-bags">${sign(b)}${num(b)} bag${Math.abs(b) === 1 ? "" : "s"}</span><span class="q-kg">${sign(g)}${kg(g)} kg</span>`;
+    return `<span class="q"><span class="q-bags">${sign(b)}${num(b)} bag${Math.abs(b) === 1 ? "" : "s"}</span><span class="q-kg">${sign(g)}${kg(g)} kg</span></span>`;
   };
 
   function toast(msg, kind = "ok") {
@@ -140,6 +140,7 @@
       const m = path.match(re);
       if (!m) continue;
       document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === nav));
+      document.querySelectorAll("[data-tab]").forEach(a => a.classList.toggle("active", a.dataset.tab === nav || (nav === "dispatch-new" && a.dataset.tab === "dispatches")));
       view.classList.add("loading");
       after = null;
       let html;
@@ -156,6 +157,7 @@
       if (seq !== renderSeq) return; // the user has already moved on
       view.classList.remove("loading");
       view.innerHTML = html || "";
+      labelTables(view);
       if (wire) wire();
       return;
     }
@@ -167,8 +169,18 @@
     render();
     view.focus({ preventScroll: true });
     window.scrollTo(0, 0);
-    document.getElementById("sidenav").classList.remove("open");
+    closeMore();
   });
+
+  // On a phone, tables become cards: each cell shows its column name beside its value.
+  function labelTables(root) {
+    root.querySelectorAll("table.tbl").forEach(t => {
+      const heads = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim());
+      t.querySelectorAll("tbody tr, tfoot tr").forEach(tr => {
+        [...tr.children].forEach((td, i) => { if (heads[i] && !td.hasAttribute("data-label")) td.setAttribute("data-label", heads[i]); });
+      });
+    });
+  }
 
   /* ---------- dashboard ---------- */
 
@@ -486,6 +498,7 @@
         if (!r) return;
         offset += r.transactions.length;
         document.getElementById("txnBody").insertAdjacentHTML("beforeend", r.transactions.map(t => txnRow(t, true)).join(""));
+        labelTables(view);
         if (!r.hasMore) more.remove();
       });
       document.getElementById("exportLedger").addEventListener("click", e => attempt(() => Api.download("/exports/ledger.csv", "stock-ledger.csv"), null, e.currentTarget));
@@ -809,7 +822,7 @@
         </section>`;
     }
     return `
-      <div class="page-head"><div><h1>Track a bag</h1><p class="sub">Scan a label with a USB/Bluetooth scanner or type the code printed under the barcode.</p></div></div>
+      <div class="page-head"><div><h1>Track a bag</h1><p class="sub">Tap <strong>Scan</strong> to use the phone camera, use a USB/Bluetooth scanner, or type the code printed under the bars.</p></div></div>
       <form class="card form track-form" id="trackForm"><label class="grow">Barcode<input name="code" class="mono" value="${esc(t ? t.value : "")}" placeholder="PKG-XXXXXXXXXXX" autocomplete="off"></label><button class="btn primary" type="submit">Track</button></form>
       ${body}`;
   }
@@ -1021,6 +1034,7 @@
     document.getElementById("userAvatar").textContent = M.me.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
     document.getElementById("userRole").textContent = ROLE_LABEL[M.me.role];
     document.querySelectorAll("[data-can]").forEach(a => { a.hidden = !can[a.dataset.can](); });
+    document.querySelectorAll("[data-cannot]").forEach(a => { a.hidden = can[a.dataset.cannot](); });
     render();
   }
 
@@ -1070,11 +1084,144 @@
     location.hash = `#/track/${encodeURIComponent(v)}`;
   });
 
-  document.getElementById("menuToggle").addEventListener("click", e => {
-    const nav = document.getElementById("sidenav");
-    nav.classList.toggle("open");
-    e.currentTarget.setAttribute("aria-expanded", nav.classList.contains("open"));
+  /* ---------- phone: More sheet (the left menu as an overlay) ---------- */
+
+  const sidenav = document.getElementById("sidenav");
+  const backdrop = document.getElementById("navBackdrop");
+  const tabMore = document.getElementById("tabMore");
+  function closeMore() {
+    sidenav.classList.remove("open");
+    backdrop.hidden = true;
+    tabMore.setAttribute("aria-expanded", "false");
+  }
+  tabMore.addEventListener("click", () => {
+    const open = !sidenav.classList.contains("open");
+    sidenav.classList.toggle("open", open);
+    backdrop.hidden = !open;
+    tabMore.setAttribute("aria-expanded", String(open));
   });
+  backdrop.addEventListener("click", closeMore);
+  sidenav.addEventListener("click", e => { if (e.target.closest("a")) closeMore(); });
+
+  /* ---------- camera scanner ---------- */
+  // Uses the phone's built-in barcode reader where there is one (Android Chrome);
+  // elsewhere (iPhone, desktop) loads the bundled ZXing decoder on first use.
+
+  const Scanner = (() => {
+    const box = document.getElementById("scanner");
+    const video = document.getElementById("scanVideo");
+    const msg = t => { document.getElementById("scanMsg").textContent = t; };
+    let stream = null, timer = null, session = 0;
+
+    function loadZxing() {
+      if (window.ZXing) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "vendor/zxing-0.21.3.min.js";
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("The scanner could not load"));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function nativeDetector() {
+      if (!("BarcodeDetector" in window)) return null;
+      try {
+        const formats = await BarcodeDetector.getSupportedFormats();
+        return formats.includes("code_128") ? new BarcodeDetector({ formats: ["code_128"] }) : null;
+      } catch (e) { return null; }
+    }
+
+    async function zxingDecoder() {
+      await loadZxing();
+      const Z = window.ZXing;
+      const reader = new Z.MultiFormatReader();
+      reader.setHints(new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.CODE_128]], [Z.DecodeHintType.TRY_HARDER, true]]));
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      return () => {
+        // The middle band of the picture, where the on-screen frame guides the label.
+        const w = video.videoWidth, h = video.videoHeight;
+        if (!w) return null;
+        const bandH = Math.round(h * 0.5);
+        canvas.width = w; canvas.height = bandH;
+        ctx.drawImage(video, 0, Math.round((h - bandH) / 2), w, bandH, 0, 0, w, bandH);
+        try {
+          const bitmap = new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)));
+          return reader.decodeWithState(bitmap).getText();
+        } catch (e) { return null; }
+      };
+    }
+
+    function found(code) {
+      if (navigator.vibrate) navigator.vibrate(60);
+      close();
+      location.hash = `#/track/${encodeURIComponent(code.trim())}`;
+    }
+
+    async function open() {
+      const my = ++session;
+      box.hidden = false;
+      document.body.classList.add("scanning");
+      box.querySelector("[name=code]").value = "";
+      msg("Starting the camera…");
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        msg("This browser can't use the camera here. Type the code under the bars instead.");
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      } catch (e) {
+        msg(e && e.name === "NotAllowedError"
+          ? "Camera access was refused. Allow the camera for this site in the browser settings, or type the code below."
+          : "No camera was found. Type the code under the bars instead.");
+        return;
+      }
+      if (my !== session) return stopStream();
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      msg("Hold the label inside the frame. It scans by itself.");
+      const native = await nativeDetector();
+      let decode;
+      if (native) {
+        decode = async () => { const r = await native.detect(video).catch(() => []); return r.length ? r[0].rawValue : null; };
+      } else {
+        try { decode = await zxingDecoder(); } catch (e) { msg(`${e.message}. Type the code under the bars instead.`); return; }
+      }
+      const tick = async () => {
+        if (my !== session || !stream) return;
+        const code = await decode();
+        if (code && my === session) return found(code);
+        timer = setTimeout(tick, 120);
+      };
+      tick();
+    }
+
+    function stopStream() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+
+    function close() {
+      session++;
+      clearTimeout(timer);
+      stopStream();
+      video.srcObject = null;
+      box.hidden = true;
+      document.body.classList.remove("scanning");
+    }
+
+    document.getElementById("scanClose").addEventListener("click", close);
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !box.hidden) close(); });
+    document.getElementById("scanManual").addEventListener("submit", e => {
+      e.preventDefault();
+      const v = e.currentTarget.code.value.trim();
+      if (v) found(v);
+    });
+    return { open, close };
+  })();
+
+  document.querySelectorAll("[data-open-scanner]").forEach(b => b.addEventListener("click", () => { closeMore(); Scanner.open(); }));
 
   if (Api.hasToken()) startApp(); else showLogin("");
 })();

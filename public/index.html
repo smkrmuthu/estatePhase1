@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estate.css?v=3" />
+  <link rel="stylesheet" href="css/estate.css?v=4" />
 </head>
 <body>
   <!-- Logo mark, defined once and reused (header, sign-in). "1" navy, "U" blue→teal, coffee bean. -->
@@ -63,6 +63,9 @@
       <form class="scan-box" id="scanForm" autocomplete="off">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14M6 5v14M9 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke="currentColor" stroke-width="1.6"/></svg>
         <input id="scanInput" type="text" placeholder="Scan a bag label or type its code…" aria-label="Scan a bag label or type its code" />
+        <button type="button" class="scan-cam" data-open-scanner aria-label="Scan with the camera" title="Scan with the camera">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 9v6M10 9v6M12.5 9v6M15 9v6M17 9v6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
       </form>
       <div class="user-menu">
         <button class="user-btn" id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"><span class="avatar" id="userAvatar"></span><span class="user-name" id="userName"></span></button>
@@ -72,7 +75,6 @@
           <button id="signOut" type="button">Sign out</button>
         </div>
       </div>
-      <button class="menu-toggle" id="menuToggle" type="button" aria-label="Menu" aria-expanded="false">☰</button>
     </header>
 
     <div class="layout">
@@ -96,6 +98,28 @@
       </nav>
       <main id="view" class="view" tabindex="-1"></main>
     </div>
+
+    <!-- Phone: bottom tab bar (the left menu opens from More) -->
+    <nav class="tabbar" id="tabbar" aria-label="Quick actions">
+      <a href="#/" data-tab="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Home</span></a>
+      <a href="#/receive" data-tab="receive" data-can="post"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Inward</span></a>
+      <a href="#/stock" data-tab="stock" data-cannot="post"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8l8-4 8 4-8 4zM4 12l8 4 8-4M4 16l8 4 8-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Stock</span></a>
+      <button type="button" class="tab-scan" data-open-scanner aria-label="Scan a bag label"><span class="tab-scan-dot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 9v6M10 9v6M12.5 9v6M15 9v6M17 9v6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span><span>Scan</span></button>
+      <a href="#/dispatches" data-tab="dispatches"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-.01M17 19a2 2 0 1 0 0-.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Despatch</span></a>
+      <button type="button" id="tabMore" data-tab="more" aria-label="More pages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>More</span></button>
+    </nav>
+    <div class="nav-backdrop" id="navBackdrop" hidden></div>
+  </div>
+
+  <!-- Camera scanner -->
+  <div class="scanner" id="scanner" role="dialog" aria-modal="true" aria-labelledby="scanTitle" hidden>
+    <div class="scanner-head"><span id="scanTitle">Scan a bag label</span><button type="button" class="scanner-close" id="scanClose" aria-label="Close the scanner">✕</button></div>
+    <div class="scanner-view"><video id="scanVideo" playsinline muted></video><div class="scanner-frame" aria-hidden="true"></div></div>
+    <p class="scanner-msg" id="scanMsg" role="status">Starting the camera…</p>
+    <form class="scanner-manual" id="scanManual" autocomplete="off">
+      <input name="code" class="mono" placeholder="Or type the code under the bars" aria-label="Type the code under the bars">
+      <button class="btn primary" type="submit">Track</button>
+    </form>
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -103,6 +127,6 @@
 
   <script src="js/code128.js?v=2"></script>
   <script src="js/api.js?v=2"></script>
-  <script src="js/app.js?v=3"></script>
+  <script src="js/app.js?v=4"></script>
 </body>
 </html>

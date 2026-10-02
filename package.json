@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "OneUpTech Estate \u2014 coffee stock, client dispatch and package barcodes",
+  "description": "OneUpTech Estate — coffee stock, client dispatch and package barcodes",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler d1 migrations apply estate-db --remote && wrangler deploy",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261002.1",
+    "@zxing/library": "^0.21.3",
     "drizzle-kit": "^0.31.11",
     "typescript": "^5.9.3",
     "wrangler": "^4.146.0"

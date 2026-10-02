@@ -52,6 +52,12 @@ The screens use estate words; the database and API keep their original codes:
 
 Look and feel: roasted-coffee brown for actions, parchment cream background, teal links, harvest-gold accents, cherry red only for warnings; Fraunces for headings, Inter for text, monospace only for codes (LOT-…, PKG-…). Quantities show bags first, kg underneath.
 
+## On a phone
+
+Below 760 px wide the app switches to phone mode: a bottom tab bar (Home, Inward or Stock, **Scan**, Despatch, More), tables shown as cards, and larger tap targets. **More** opens the full menu.
+
+**Scan** opens the camera and reads a bag label's Code 128 barcode by itself, then shows that bag's trace. It uses the phone's built-in barcode reader where there is one (Android Chrome) and otherwise loads the bundled ZXing decoder (`public/vendor/zxing-0.21.3.min.js`, MIT licence, about 100 KB compressed) on first use. Camera access needs HTTPS (the live site) or localhost. A USB/Bluetooth scanner and typing the code still work everywhere.
+
 ## Roles
 
 | Role | Can |
