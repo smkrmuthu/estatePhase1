@@ -100,6 +100,15 @@ Commit the `database_id` change from step 1. The domain `estate.oneuptech.co` is
 
 After that, add the rest of the team under **Users** in the app.
 
+**Forgot the admin login or password?** From the same laptop:
+
+```bash
+npm run user:list:remote                                   # shows every login
+npm run user:reset:remote -- --login you@example.com       # asks for a new password
+```
+
+Other users' passwords are reset by an admin in the app (**Users → Edit**).
+
 ## Local development
 
 ```bash
