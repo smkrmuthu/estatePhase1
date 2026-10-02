@@ -900,15 +900,16 @@
           <h1><span class="mono">${esc(d.no)}</span> ${badge(d.status)}</h1>
           <p class="sub">${esc(c.name)} · ${fmtDate(d.date)} · ${num(tot.bags)} bags · ${kg(tot.grams)} kg · ${pk.length} labels</p></div>
         <div class="actions page-actions">
-          ${pk.length ? `<button class="btn" data-act="labels">Print labels (${pk.length})</button>` : ""}
-          <button class="btn" data-act="note">Print despatch note</button>
+          ${draft && pk.length ? `<button class="btn" data-act="labels">Print labels (${pk.length})</button>` : ""}
+          ${draft || d.status === "DISPATCHED" ? `<button class="btn" data-act="note">Print despatch note</button>` : ""}
           ${draft && can.post() ? `<a class="btn" href="#/dispatch/${esc(d.id)}/edit">Edit</a><button class="btn danger ghost" data-act="cancel">Cancel</button><button class="btn primary" data-act="post">Truck left — confirm</button>` : ""}
           ${d.status === "DISPATCHED" && can.manage() ? `<button class="btn danger ghost" data-act="reverse">Undo despatch</button>` : ""}
         </div>
       </div>
+      ${d.status === "DISPATCHED" ? `<div class="notice">Despatched: labels can no longer be printed — the bags have left. The despatch note can still be printed for records.</div>` : ""}
       ${draft ? `<div class="notice">Loading: the stock is held but not yet deducted. Print and stick the labels, check the weights, then press <strong>Truck left — confirm</strong> when the vehicle goes.</div>` : ""}
-      ${d.status === "REVERSED" ? `<div class="notice warn">Undone: ${esc(d.statusReason)}. The stock went back to the godown; its labels are cancelled.</div>` : ""}
-      ${d.status === "CANCELLED" ? `<div class="notice warn">Cancelled${d.statusReason ? `: ${esc(d.statusReason)}` : ""}. Its labels are cancelled.</div>` : ""}
+      ${d.status === "REVERSED" ? `<div class="notice warn">Undone: ${esc(d.statusReason)}. The stock went back to the godown; its labels are cancelled and can't be printed.</div>` : ""}
+      ${d.status === "CANCELLED" ? `<div class="notice warn">Cancelled${d.statusReason ? `: ${esc(d.statusReason)}` : ""}. Its labels are cancelled and can't be printed.</div>` : ""}
       <div class="grid-2">
         <section class="card"><h2>Consignee</h2>
           <dl class="facts one">
@@ -940,7 +941,7 @@
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Label</th><th>Barcode</th><th>Lot</th><th class="r">Bags</th><th class="r">Net kg</th><th>Status</th><th class="r">Printed</th><th></th></tr></thead><tbody>
         ${pk.map(p => `<tr><td class="mono">${p.seq} of ${pk.length}</td><td><a class="mono" href="#/track/${esc(p.barcode)}">${esc(p.barcode)}</a></td><td class="mono">${esc(p.lotCode)}</td><td class="r num">${p.bags}</td>
           <td class="r">${draft && can.post() ? `<input class="wt" type="number" min="0.001" step="0.001" value="${p.grams / 1000}" data-pkg="${esc(p.id)}" aria-label="Net kg for bag label ${p.seq}">` : `<span class="num">${kg(p.grams)}</span>`}</td>
-          <td>${badge(p.status)}</td><td class="r">${p.printCount || 0}×</td><td><button type="button" class="btn small ghost" data-print-one="${esc(p.id)}">Label</button></td></tr>`).join("")}
+          <td>${badge(p.status)}</td><td class="r">${p.printCount || 0}×</td><td>${draft ? `<button type="button" class="btn small ghost" data-print-one="${esc(p.id)}">Label</button>` : ""}</td></tr>`).join("")}
         </tbody></table></div>
         ${draft && can.post() ? `<div class="form-actions pad-row"><span class="muted">Weighed each bag? Enter its actual net kg; the totals must match the line before the truck is confirmed.</span><button class="btn" type="submit">Save weights</button></div>` : ""}
         </form>

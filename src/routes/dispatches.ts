@@ -314,6 +314,9 @@ dispatchRoutes.post('/dispatches/:id/printed', async (c) => {
   const auth = c.get('auth');
   const db = c.env.DB;
   const d = await loadDispatch(db, auth.orgId, c.req.param('id')!);
+  // Labels go on bags before loading; once the truck has left (or the despatch is
+  // cancelled / undone) its labels are final or void, so no more copies are made.
+  if (d.status !== 'DRAFT') throw conflict('Labels can only be printed while the despatch is loading');
   const input = await body(c, z.object({ packageIds: z.array(z.string()).min(1).max(MAX_PACKAGES) }));
   const stmts: D1PreparedStatement[] = [];
   for (let i = 0; i < input.packageIds.length; i += 90) {

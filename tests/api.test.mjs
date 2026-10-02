@@ -183,6 +183,7 @@ test('dispatch: draft holds stock, issues barcodes, posts once', async () => {
   assert.equal(after.availableGrams, 550_500);
   assert.equal((await api(S.op, 'POST', `/dispatches/${S.d1.id}/post`)).status, 409);
   assert.equal((await api(S.op, 'PUT', `/dispatches/${S.d1.id}/package-weights`, { weights: { [p1.id]: 1 } })).status, 409);
+  assert.equal((await api(S.op, 'POST', `/dispatches/${S.d1.id}/printed`, { packageIds: [p1.id] })).status, 409);
 });
 
 test('editing draft lines retires old barcodes; header edits keep them', async () => {
