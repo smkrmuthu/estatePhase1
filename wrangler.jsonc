@@ -1,0 +1,17 @@
+// Cloudflare deployment: a static-assets Worker serving public/ at estate.oneuptech.co.
+// Deploys automatically when the repo is connected in Cloudflare (Workers & Pages →
+// Create → Import a repository), or by hand with `npx wrangler deploy`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "estate",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./public",
+    // Unknown paths fall back to index.html (the app routes with #/… so this is just a safety net).
+    "not_found_handling": "single-page-application"
+  },
+  // Requires the oneuptech.co zone to be on the same Cloudflare account (as for fleet.oneuptech.co).
+  "routes": [
+    { "pattern": "estate.oneuptech.co", "custom_domain": true }
+  ]
+}

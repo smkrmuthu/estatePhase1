@@ -1,0 +1,14 @@
+{
+  "name": "estate-phase1",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Coffee stock and distribution: godown stock, client dispatch and package barcodes",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}
