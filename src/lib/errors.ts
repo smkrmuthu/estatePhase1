@@ -13,10 +13,10 @@ export const conflict = (message: string) => new ApiError(409, 'conflict', messa
 // Messages raised by the database triggers in migrations/0001_stock_rules.sql.
 const RULE_MESSAGES: Record<string, [409 | 422, string]> = {
   insufficient_stock: [409, 'Not enough stock available for this posting (someone may have just used it). Refresh and try again.'],
-  ledger_immutable: [409, 'Posted stock records cannot be changed. Reverse the transaction instead.'],
-  not_reversible: [409, 'This transaction has already been reversed or cannot be reversed.'],
-  dispatch_not_postable: [409, 'This dispatch was already posted, or its packages do not add up to the line totals.'],
-  dispatch_not_draft: [409, 'This dispatch is no longer a draft, so it cannot be changed.'],
+  ledger_immutable: [409, 'Recorded stock entries cannot be changed. Undo the entry instead.'],
+  not_reversible: [409, 'This entry has already been undone or cannot be undone.'],
+  dispatch_not_postable: [409, 'This despatch was already confirmed, or its bag weights do not add up to the line totals.'],
+  dispatch_not_draft: [409, 'This despatch is no longer loading, so it cannot be changed.'],
   barcode_immutable: [409, 'Package barcodes cannot be changed or removed.'],
   cross_org: [422, 'Record belongs to a different organisation.'],
   audit_immutable: [409, 'Audit records cannot be changed.']

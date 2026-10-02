@@ -8,8 +8,8 @@ Live at **https://estate.oneuptech.co** once set up (see *Hosting*).
 
 | Goal | How |
 |---|---|
-| Maintain coffee stock in godowns | Receive (incl. opening balance), transfer between godowns, adjust with a reason code. **Stock on hand** shows each godown + lot in kg and bags, with what drafts hold and what is available. Every movement is in the **Stock ledger**. |
-| Distribute to clients | **New dispatch**: client, vehicle, driver, destination, and lines (godown + lot + bags + kg). Saving a draft holds the stock; **Post dispatch** deducts it. |
+| Maintain coffee stock in godowns | **Inward** (incl. opening stock), transfer between godowns, adjust with a reason code. **Stock on hand** shows each godown + lot in bags and kg, with what is held for loading and what is available. Every entry is in the **Stock register**. |
+| Distribute to clients | **New despatch**: client, vehicle, driver, destination, and lines (godown + lot + bags + kg). Saving holds the stock (status *Loading*); **Truck left — confirm** deducts it. |
 | Barcodes when delivering | Each package (normally one per bag) gets a Code 128 barcode when the draft is saved, so labels go on before loading. |
 | Barcode delivered with dispatch details | Labels show client, address, dispatch no., date, vehicle, coffee, lot, net weight and *package n of N*. The A4 **dispatch note** lists every package barcode. Scanning a label shows the full trace. |
 | Multi-user | Sign-in, four roles, godown-level access for operators, audit trail. |
@@ -36,6 +36,21 @@ scripts/create-user.mjs   create the first admin (or any user) from the command 
 tests/             API integration tests (real Worker + local D1) and barcode tests
 wrangler.jsonc     Worker "estate", D1 "estate-db", domain estate.oneuptech.co
 ```
+
+## Screen wording
+
+The screens use estate words; the database and API keep their original codes:
+
+| Screen says | Stored as |
+|---|---|
+| Inward | RECEIPT |
+| Despatch | DISPATCH |
+| Loading / Despatched / Undone | DRAFT / DISPATCHED / REVERSED |
+| Recorded | POSTED |
+| Undo | REVERSAL |
+| Stock register | stock ledger |
+
+Look and feel: roasted-coffee brown for actions, parchment cream background, teal links, harvest-gold accents, cherry red only for warnings; Fraunces for headings, Inter for text, monospace only for codes (LOT-…, PKG-…). Quantities show bags first, kg underneath.
 
 ## Roles
 

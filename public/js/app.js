@@ -4,7 +4,7 @@
  * Hash-routed single page. Every view is async: it fetches what it needs from the
  * API (/api/v1), returns HTML, and wires its handlers. All business rules live in the
  * Worker and the database; this file collects input, shows results and prints labels
- * and dispatch notes. Small reference lists (godowns, items, clients, org, me) are
+ * and despatch notes. Small reference lists (godowns, items, clients, org, me) are
  * cached in M and refreshed after edits.
  */
 (() => {
@@ -40,7 +40,18 @@
   const active = list => list.filter(r => r.active !== false);
 
   const STATUS_CLASS = { DRAFT: "amber", DISPATCHED: "green", POSTED: "green", PREPARED: "amber", CANCELLED: "grey", REVERSED: "red", INACTIVE: "grey", ACTIVE: "green" };
-  const badge = s => `<span class="badge ${STATUS_CLASS[s] || "grey"}">${esc(s)}</span>`;
+  // Estate words for the stored status / type codes (the codes stay the same in the API).
+  const STATUS_LABEL = { DRAFT: "Loading", DISPATCHED: "Despatched", POSTED: "Recorded", PREPARED: "Ready", CANCELLED: "Cancelled", REVERSED: "Undone", INACTIVE: "Inactive", ACTIVE: "Active" };
+  const TYPE_LABEL = { OPENING: "Opening stock", RECEIPT: "Inward", TRANSFER: "Transfer", ADJUSTMENT: "Adjustment", DISPATCH: "Despatch", REVERSAL: "Undo" };
+  const badge = s => `<span class="badge ${STATUS_CLASS[s] || "grey"}">${esc(STATUS_LABEL[s] || s)}</span>`;
+  const typeName = t => TYPE_LABEL[t] || t;
+  const codeOptions = (labels, selected, placeholder) =>
+    `<option value="">${esc(placeholder)}</option>` + Object.entries(labels).map(([k, v]) => `<option value="${k}" ${k === selected ? "selected" : ""}>${esc(v)}</option>`).join("");
+  // Bags first (what the godown counts), kg underneath.
+  const qty = (g, b, signed) => {
+    const sign = v => (signed && v > 0 ? "+" : "");
+    return `<span class="q-bags">${sign(b)}${num(b)} bag${Math.abs(b) === 1 ? "" : "s"}</span><span class="q-kg">${sign(g)}${kg(g)} kg</span>`;
+  };
 
   function toast(msg, kind = "ok") {
     const t = document.getElementById("toast");
@@ -93,7 +104,8 @@
   async function loadMasters() {
     const [g, i, c, org] = await Promise.all([Api.get("/godowns"), Api.get("/items"), Api.get("/clients"), Api.get("/org")]);
     M.godowns = g.godowns; M.items = i.items; M.clients = c.clients; M.org = org;
-    document.getElementById("orgName").textContent = org.name;
+    // Under the logo: the estate's own name. Until it is set in Settings, say what the app is for.
+    document.getElementById("orgName").textContent = /oneuptech/i.test(org.name) ? "Coffee stock & despatch" : org.name;
   }
 
   /* ---------- routes ---------- */
@@ -165,34 +177,34 @@
     const empty = !M.godowns.length && !M.items.length;
     return `
       <div class="page-head">
-        <div><h1>Dashboard</h1><p class="sub">Coffee held in godowns and dispatched to clients.</p></div>
-        ${can.post() ? `<div class="actions"><a class="btn" href="#/receive">+ Receive stock</a><a class="btn primary" href="#/dispatch/new">+ New dispatch</a></div>` : ""}
+        <div><h1>Dashboard</h1><p class="sub">Coffee in your godowns, and what has gone out to clients.</p></div>
+        ${can.post() ? `<div class="actions"><a class="btn" href="#/receive">+ Inward</a><a class="btn primary" href="#/dispatch/new">+ New despatch</a></div>` : ""}
       </div>
       ${empty ? `<div class="notice">Nothing set up yet. ${can.manage() ? `Add your <a href="#/masters/godowns">godowns</a>, <a href="#/masters/items">coffee items</a> and <a href="#/masters/clients">clients</a> to begin.` : "Ask a manager to add godowns, coffee items and clients."}</div>` : ""}
       <div class="tiles">
-        <div class="tile"><div class="tile-label">Stock on hand</div><div class="tile-value">${kg(d.onHandGrams)} <small>kg</small></div><div class="tile-foot">${num(d.onHandBags)} bags</div></div>
-        <div class="tile"><div class="tile-label">Held by draft dispatches</div><div class="tile-value">${kg(d.reservedGrams)} <small>kg</small></div><div class="tile-foot">${d.draftCount} draft${d.draftCount === 1 ? "" : "s"}</div></div>
-        <div class="tile"><div class="tile-label">Dispatched this month</div><div class="tile-value">${kg(d.monthDispatchGrams)} <small>kg</small></div><div class="tile-foot">${d.monthDispatchCount} dispatch${d.monthDispatchCount === 1 ? "" : "es"}</div></div>
+        <div class="tile"><div class="tile-label">Stock in godowns</div><div class="tile-value">${num(d.onHandBags)} <small>bags</small></div><div class="tile-foot">${kg(d.onHandGrams)} kg</div></div>
+        <div class="tile"><div class="tile-label">Held for loading</div><div class="tile-value">${num(d.reservedBags)} <small>bags</small></div><div class="tile-foot">${kg(d.reservedGrams)} kg · ${d.draftCount} despatch${d.draftCount === 1 ? "" : "es"} loading</div></div>
+        <div class="tile"><div class="tile-label">Despatched this month</div><div class="tile-value">${num(d.monthDispatchBags)} <small>bags</small></div><div class="tile-foot">${kg(d.monthDispatchGrams)} kg · ${d.monthDispatchCount} despatch${d.monthDispatchCount === 1 ? "" : "es"}</div></div>
         <div class="tile"><div class="tile-label">Lots in stock</div><div class="tile-value">${d.lotsInStock}</div><div class="tile-foot">${active(M.godowns).length} godowns</div></div>
       </div>
       <div class="grid-2">
         <section class="card">
           <h2>By godown</h2>
-          ${d.byGodown.length ? `<table class="tbl"><thead><tr><th>Godown</th><th class="r">kg</th><th class="r">Bags</th></tr></thead><tbody>
-            ${d.byGodown.map(r => `<tr><td><a href="#/stock?g=${esc(r.id)}">${esc(r.name)}</a></td><td class="r mono">${kg(r.grams)}</td><td class="r mono">${num(r.bags)}</td></tr>`).join("")}
+          ${d.byGodown.length ? `<table class="tbl"><thead><tr><th>Godown</th><th class="r">In stock</th></tr></thead><tbody>
+            ${d.byGodown.map(r => `<tr><td><a href="#/stock?g=${esc(r.id)}">${esc(r.name)}</a></td><td class="r num">${qty(r.grams, r.bags)}</td></tr>`).join("")}
           </tbody></table>` : `<div class="empty">No godowns yet.</div>`}
         </section>
         <section class="card">
           <h2>By coffee item</h2>
-          ${d.byItem.length ? `<table class="tbl"><thead><tr><th>Item</th><th class="r">kg</th><th class="r">Bags</th></tr></thead><tbody>
-            ${d.byItem.map(r => `<tr><td>${esc(r.name)}<div class="muted">${esc(itemMeta(r))}</div></td><td class="r mono">${kg(r.grams)}</td><td class="r mono">${num(r.bags)}</td></tr>`).join("")}
+          ${d.byItem.length ? `<table class="tbl"><thead><tr><th>Coffee</th><th class="r">In stock</th></tr></thead><tbody>
+            ${d.byItem.map(r => `<tr><td>${esc(r.name)}<div class="muted">${esc(itemMeta(r))}</div></td><td class="r num">${qty(r.grams, r.bags)}</td></tr>`).join("")}
           </tbody></table>` : `<div class="empty">No stock yet.</div>`}
         </section>
       </div>
-      ${d.drafts.length ? `<section class="card flush"><h2>Draft dispatches waiting to be posted</h2>${dispatchTable(d.drafts)}</section>` : ""}
+      ${d.drafts.length ? `<section class="card flush"><h2>Despatches being loaded</h2>${dispatchTable(d.drafts)}</section>` : ""}
       <section class="card flush">
         <h2>Recent activity</h2>
-        ${tx.transactions.length ? txnTable(tx.transactions) : `<div class="empty">No stock movements yet.</div>`}
+        ${tx.transactions.length ? txnTable(tx.transactions) : `<div class="empty">No stock entries yet.</div>`}
       </section>`;
   }
 
@@ -214,24 +226,24 @@
         location.hash = `#/stock?g=${encodeURIComponent(f.g)}&i=${encodeURIComponent(f.i)}`;
       });
       document.getElementById("exportStock").addEventListener("click", () => downloadCsv("stock-on-hand.csv",
-        [["Godown", "Lot", "Item", "Type", "Form", "Grade", "On hand kg", "On hand bags", "Reserved kg", "Available kg", "Available bags"],
-          ...rows.map(r => [r.g, r.lotCode, r.it.name, r.it.coffeeType, r.it.form, r.it.grade, r.onHandGrams / 1000, r.onHandBags, r.reservedGrams / 1000, r.availableGrams / 1000, r.availableBags])]));
+        [["Godown", "Lot", "Coffee", "Type", "Form", "Grade", "Bags in stock", "kg in stock", "kg held for loading", "Bags available", "kg available"],
+          ...rows.map(r => [r.g, r.lotCode, r.it.name, r.it.coffeeType, r.it.form, r.it.grade, r.onHandBags, r.onHandGrams / 1000, r.reservedGrams / 1000, r.availableBags, r.availableGrams / 1000])]));
     });
     return `
       <div class="page-head">
-        <div><h1>Stock on hand</h1><p class="sub">By godown and lot. Available = on hand minus what draft dispatches hold.</p></div>
+        <div><h1>Stock on hand</h1><p class="sub">By godown and lot. Available = in stock minus what is held for despatches being loaded.</p></div>
         <div class="actions"><button class="btn" id="exportStock">Export CSV</button></div>
       </div>
       <form class="filters" id="stockFilter">
         <label>Godown<select name="g">${options(M.godowns, gSel, g => g.name, "All godowns")}</select></label>
-        <label>Item<select name="i">${options(M.items, iSel, it => it.name, "All items")}</select></label>
+        <label>Coffee<select name="i">${options(M.items, iSel, it => it.name, "All coffee")}</select></label>
       </form>
       <section class="card flush">
-        ${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Godown</th><th>Lot</th><th>Item</th><th class="r">On hand kg</th><th class="r">Bags</th><th class="r">Reserved kg</th><th class="r">Available kg</th><th class="r">Avail. bags</th></tr></thead><tbody>
+        ${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Godown</th><th>Lot</th><th>Coffee</th><th class="r">In stock</th><th class="r">Held for loading</th><th class="r">Available</th></tr></thead><tbody>
           ${rows.map(r => `<tr><td>${esc(r.g)}</td><td><a class="mono" href="#/lot/${esc(r.lotId)}">${esc(r.lotCode)}</a></td><td>${esc(r.it.name)}<div class="muted">${esc(itemMeta(r.it))}</div></td>
-            <td class="r mono">${kg(r.onHandGrams)}</td><td class="r mono">${num(r.onHandBags)}</td><td class="r mono">${r.reservedGrams ? kg(r.reservedGrams) : "–"}</td><td class="r mono strong">${kg(r.availableGrams)}</td><td class="r mono">${num(r.availableBags)}</td></tr>`).join("")}
-          </tbody><tfoot><tr><td colspan="3">Total</td><td class="r mono">${kg(tot.g)}</td><td class="r mono">${num(tot.b)}</td><td class="r mono">${kg(tot.rg)}</td><td class="r mono">${kg(tot.ag)}</td><td class="r mono">${num(tot.ab)}</td></tr></tfoot></table></div>`
-          : `<div class="empty">No stock matches. ${setupNeeded() || (can.post() ? `<a href="#/receive">Receive stock</a>` : "")}</div>`}
+            <td class="r num">${qty(r.onHandGrams, r.onHandBags)}</td><td class="r num">${r.reservedGrams ? qty(r.reservedGrams, r.reservedBags) : "–"}</td><td class="r num strong">${qty(r.availableGrams, r.availableBags)}</td></tr>`).join("")}
+          </tbody><tfoot><tr><td colspan="3">Total</td><td class="r num">${qty(tot.g, tot.b)}</td><td class="r num">${tot.rg ? `${kg(tot.rg)} kg` : "–"}</td><td class="r num">${qty(tot.ag, tot.ab)}</td></tr></tfoot></table></div>`
+          : `<div class="empty">No stock matches. ${setupNeeded() || (can.post() ? `<a href="#/receive">Record an inward</a>` : "")}</div>`}
       </section>`;
   }
 
@@ -239,24 +251,25 @@
     const { lot: l, history, packagesDispatched } = await Api.get(`/lots/${encodeURIComponent(lotId)}`);
     const it = item(l.itemId);
     let runG = 0;
-    const rows = history.map(h => { runG += h.grams; return { ...h, runG }; });
+    let runB = 0;
+    const rows = history.map(h => { runG += h.grams; runB += h.bags; return { ...h, runG, runB }; });
     return `
       <div class="page-head"><div><div class="crumb"><a href="#/stock">Stock</a> / Lot</div><h1 class="mono">${esc(l.code)}</h1><p class="sub">${esc(it.name)} · ${esc(itemMeta(it))}</p></div></div>
       <section class="card">
         <dl class="facts">
           <div><dt>Source</dt><dd>${esc(l.sourceType)}${l.sourceRef ? ` · ${esc(l.sourceRef)}` : ""}</dd></div>
           <div><dt>Crop year</dt><dd>${esc(l.cropYear || "–")}</dd></div>
-          <div><dt>Moisture at receipt</dt><dd>${l.moisturePct != null ? esc(l.moisturePct) + " %" : "–"}</dd></div>
+          <div><dt>Moisture on arrival</dt><dd>${l.moisturePct != null ? esc(l.moisturePct) + " %" : "–"}</dd></div>
           <div><dt>Outturn</dt><dd>${l.outturnPct != null ? esc(l.outturnPct) + " %" : "–"}</dd></div>
-          <div><dt>Packages dispatched</dt><dd>${packagesDispatched}</dd></div>
+          <div><dt>Bags despatched</dt><dd>${packagesDispatched}</dd></div>
           <div><dt>Created</dt><dd>${fmtDate(l.createdAt)}</dd></div>
         </dl>
         ${l.notes ? `<p class="muted">${esc(l.notes)}</p>` : ""}
       </section>
-      <section class="card flush"><h2>Movement history</h2>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Txn</th><th>Type</th><th>Godown</th><th class="r">kg</th><th class="r">Bags</th><th class="r">Lot balance kg</th></tr></thead><tbody>
-        ${rows.map(r => `<tr><td>${fmtDate(r.date)}</td><td class="mono">${r.dispatchId ? `<a href="#/dispatch/${esc(r.dispatchId)}">${esc(r.no)}</a>` : esc(r.no)}</td><td>${esc(r.type)}</td><td>${esc(godownName(r.locationId))}</td>
-          <td class="r mono ${r.grams < 0 ? "neg" : "pos"}">${r.grams > 0 ? "+" : ""}${kg(r.grams)}</td><td class="r mono">${r.bags > 0 ? "+" : ""}${num(r.bags)}</td><td class="r mono">${kg(r.runG)}</td></tr>`).join("")}
+      <section class="card flush"><h2>Stock register for this lot</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Entry</th><th>Type</th><th>Godown</th><th class="r">In / out</th><th class="r">Lot balance</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td>${fmtDate(r.date)}</td><td class="mono">${r.dispatchId ? `<a href="#/dispatch/${esc(r.dispatchId)}">${esc(r.no)}</a>` : esc(r.no)}</td><td>${esc(typeName(r.type))}</td><td>${esc(godownName(r.locationId))}</td>
+          <td class="r num ${r.grams < 0 ? "neg" : "pos"}">${qty(r.grams, r.bags, true)}</td><td class="r num">${qty(r.runG, r.runB)}</td></tr>`).join("")}
         </tbody></table></div>
       </section>`;
   }
@@ -265,7 +278,7 @@
 
   function showPosted(no) {
     const el = document.getElementById("postedNote");
-    if (el) el.innerHTML = `<div class="notice ok">Posted <strong class="mono">${esc(no)}</strong>. <a href="#/stock">View stock</a></div>`;
+    if (el) el.innerHTML = `<div class="notice ok">Saved <strong class="mono">${esc(no)}</strong>. <a href="#/stock">View stock</a></div>`;
   }
 
   // Pre-fills kg from bags × the item's standard bag weight, until kg is typed by hand.
@@ -279,7 +292,7 @@
   }
 
   async function receiveView() {
-    if (!can.post()) return `<div class="empty">Your role cannot post stock.</div>`;
+    if (!can.post()) return `<div class="empty">Your role cannot record stock.</div>`;
     then(() => {
       const f = document.getElementById("receiveForm");
       let lotsCache = {};
@@ -311,19 +324,19 @@
             moisturePct: d.moisturePct === "" ? null : Number(d.moisturePct), outturnPct: d.outturnPct === "" ? null : Number(d.outturnPct)
           };
         }
-        const r = await attempt(() => Api.post("/receipts", body), "Stock received", f.querySelector("[type=submit]"));
+        const r = await attempt(() => Api.post("/receipts", body), "Inward saved", f.querySelector("[type=submit]"));
         if (r) { f.reset(); delete f.kg.dataset.touched; f.date.value = today(); lotsCache = {}; sync(); showPosted(`${r.no} · lot ${r.lotCode}`); }
       });
     });
     return `
-      <div class="page-head"><div><h1>Receive stock</h1><p class="sub">Coffee arriving at a godown. Each receipt adds to a lot — new or existing.</p></div></div>
+      <div class="page-head"><div><h1>Inward</h1><p class="sub">Coffee arriving at a godown. Each inward adds to a lot — a new one or an existing one.</p></div></div>
       ${setupNeeded()}
       <div id="postedNote"></div>
       <form class="card form" id="receiveForm">
         <div class="form-grid">
           <label>Date<input type="date" name="date" value="${today()}" max="${today()}" required></label>
           <label>Godown<select name="locationId" required>${options(postGodowns(), "", g => g.name, "Select godown")}</select></label>
-          <label class="span-2">Coffee item<select name="itemId" required>${options(active(M.items), "", it => `${it.name} (${it.code})`, "Select item")}</select></label>
+          <label class="span-2">Coffee<select name="itemId" required>${options(active(M.items), "", it => `${it.name} (${it.code})`, "Select item")}</select></label>
           <fieldset class="span-2 seg"><legend>Lot</legend>
             <label><input type="radio" name="lotMode" value="new" checked> New lot</label>
             <label><input type="radio" name="lotMode" value="existing"> Add to existing lot</label>
@@ -338,9 +351,9 @@
           <label>Net weight (kg)<input type="number" name="kg" min="0.001" step="0.001" required></label>
           <label class="span-2">Reference (weighbridge slip, delivery note)<input name="reference" maxlength="80"></label>
           <label class="span-2">Notes<textarea name="notes" rows="2" maxlength="300"></textarea></label>
-          <label class="check span-2"><input type="checkbox" name="opening"> Opening balance (stock already in the godown at go-live)</label>
+          <label class="check span-2"><input type="checkbox" name="opening"> Opening stock (already in the godown when we started using the app)</label>
         </div>
-        <div class="form-actions"><button class="btn primary" type="submit">Post receipt</button></div>
+        <div class="form-actions"><button class="btn primary" type="submit">Save inward</button></div>
       </form>`;
   }
 
@@ -360,7 +373,7 @@
   }
 
   async function transferView() {
-    if (!can.post()) return `<div class="empty">Your role cannot post stock.</div>`;
+    if (!can.post()) return `<div class="empty">Your role cannot record stock.</div>`;
     then(() => {
       const f = document.getElementById("transferForm");
       f.fromLocationId.addEventListener("change", () => fillLotPicker(f.lotId, f.fromLocationId.value));
@@ -369,12 +382,12 @@
         e.preventDefault();
         const d = formData(f);
         const body = { date: d.date, fromLocationId: d.fromLocationId, toLocationId: d.toLocationId, lotId: d.lotId, grams: toGrams(d.kg), bags: Number(d.bags || 0), reference: d.reference, notes: d.notes };
-        const r = await attempt(() => Api.post("/transfers", body), "Transfer posted", f.querySelector("[type=submit]"));
+        const r = await attempt(() => Api.post("/transfers", body), "Transfer saved", f.querySelector("[type=submit]"));
         if (r) { f.reset(); f.date.value = today(); fillLotPicker(f.lotId, f.fromLocationId.value); showPosted(r.no); }
       });
     });
     return `
-      <div class="page-head"><div><h1>Transfer between godowns</h1><p class="sub">Moves a lot from one godown to another in a single posting.</p></div></div>
+      <div class="page-head"><div><h1>Transfer between godowns</h1><p class="sub">Moves bags of a lot from one godown to another.</p></div></div>
       ${setupNeeded()}
       <div id="postedNote"></div>
       <form class="card form" id="transferForm">
@@ -388,7 +401,7 @@
           <label>Net weight (kg)<input type="number" name="kg" min="0.001" step="0.001" required></label>
           <label class="span-2">Notes<textarea name="notes" rows="2" maxlength="300"></textarea></label>
         </div>
-        <div class="form-actions"><button class="btn primary" type="submit">Post transfer</button></div>
+        <div class="form-actions"><button class="btn primary" type="submit">Save transfer</button></div>
       </form>`;
   }
 
@@ -403,7 +416,7 @@
         e.preventDefault();
         const d = formData(f);
         const body = { date: d.date, locationId: d.locationId, lotId: d.lotId, direction: d.direction, grams: toGrams(d.kg || 0), bags: Number(d.bags || 0), reason: d.reason, reference: d.reference, notes: d.notes };
-        const r = await attempt(() => Api.post("/adjustments", body), "Adjustment posted", f.querySelector("[type=submit]"));
+        const r = await attempt(() => Api.post("/adjustments", body), "Adjustment saved", f.querySelector("[type=submit]"));
         if (r) { f.reset(); f.date.value = today(); fillLotPicker(f.lotId, f.locationId.value, { includeEmpty: true }); showPosted(r.no); }
       });
     });
@@ -426,7 +439,7 @@
           <label class="span-2">Reference<input name="reference" maxlength="80"></label>
           <label class="span-2">Notes<textarea name="notes" rows="2" maxlength="300"></textarea></label>
         </div>
-        <div class="form-actions"><button class="btn primary" type="submit">Post adjustment</button></div>
+        <div class="form-actions"><button class="btn primary" type="submit">Save adjustment</button></div>
       </form>`;
   }
 
@@ -436,19 +449,20 @@
     const net = t.entries.reduce((s, e) => s + e.grams, 0);
     const isTransfer = t.type === "TRANSFER";
     const moved = isTransfer ? t.entries.filter(e => e.grams > 0).reduce((s, e) => s + e.grams, 0) : net;
+    const movedBags = isTransfer ? t.entries.filter(e => e.grams > 0).reduce((s, e) => s + e.bags, 0) : t.entries.reduce((s, e) => s + e.bags, 0);
     const lots = [...new Set(t.entries.map(e => e.lotCode))].join(", ");
     const out = t.entries.find(e => e.grams < 0), inn = t.entries.find(e => e.grams > 0);
     const where = isTransfer && out && inn ? `${esc(godownName(out.locationId))} → ${esc(godownName(inn.locationId))}`
       : [...new Set(t.entries.map(e => godownName(e.locationId)))].map(esc).join(", ");
     const canReverse = withActions && can.manage() && t.status === "POSTED" && t.type !== "REVERSAL" && t.type !== "DISPATCH";
-    return `<tr><td class="mono">${t.dispatchId ? `<a href="#/dispatch/${esc(t.dispatchId)}">${esc(t.no)}</a>` : esc(t.no)}</td><td>${fmtDate(t.date)}</td><td>${esc(t.type)}</td>
+    return `<tr><td class="mono">${t.dispatchId ? `<a href="#/dispatch/${esc(t.dispatchId)}">${esc(t.no)}</a>` : esc(t.no)}</td><td>${fmtDate(t.date)}</td><td>${esc(typeName(t.type))}</td>
       <td>${where} · <span class="mono">${esc(lots)}</span>${t.reason ? `<div class="muted">${esc(t.reason)}</div>` : ""}${t.reference ? `<div class="muted">Ref: ${esc(t.reference)}</div>` : ""}${t.postedBy ? `<div class="muted">by ${esc(t.postedBy)}</div>` : ""}</td>
-      <td class="r mono ${isTransfer ? "" : moved < 0 ? "neg" : "pos"}">${!isTransfer && moved > 0 ? "+" : ""}${kg(moved)}</td><td>${badge(t.status)}</td>
-      ${withActions ? `<td>${canReverse ? `<button class="btn small ghost" data-reverse="${esc(t.id)}" data-no="${esc(t.no)}">Reverse</button>` : ""}</td>` : ""}</tr>`;
+      <td class="r num ${isTransfer ? "" : moved < 0 ? "neg" : "pos"}">${qty(moved, movedBags, !isTransfer)}</td><td>${badge(t.status)}</td>
+      ${withActions ? `<td>${canReverse ? `<button class="btn small ghost" data-reverse="${esc(t.id)}" data-no="${esc(t.no)}">Undo</button>` : ""}</td>` : ""}</tr>`;
   }
 
   function txnTable(list, { withActions = false } = {}) {
-    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Date</th><th>Type</th><th>Details</th><th class="r">kg</th><th>Status</th>${withActions ? "<th></th>" : ""}</tr></thead>
+    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Date</th><th>Type</th><th>Details</th><th class="r">Bags / kg</th><th>Status</th>${withActions ? "<th></th>" : ""}</tr></thead>
       <tbody id="txnBody">${list.map(t => txnRow(t, withActions)).join("")}</tbody></table></div>`;
   }
 
@@ -462,9 +476,9 @@
       document.getElementById("ledgerList").addEventListener("click", async e => {
         const btn = e.target.closest("[data-reverse]");
         if (!btn) return;
-        const reason = prompt(`Reverse ${btn.dataset.no}? This posts an opposite movement. Enter a reason:`);
+        const reason = prompt(`Undo ${btn.dataset.no}? An opposite entry is recorded and both stay in the register. Reason:`);
         if (reason == null) return;
-        if (await attempt(() => Api.post(`/transactions/${btn.dataset.reverse}/reverse`, { reason }), `${btn.dataset.no} reversed`, btn)) render();
+        if (await attempt(() => Api.post(`/transactions/${btn.dataset.reverse}/reverse`, { reason }), `${btn.dataset.no} undone`, btn)) render();
       });
       const more = document.getElementById("moreTxn");
       if (more) more.addEventListener("click", async () => {
@@ -477,19 +491,19 @@
       document.getElementById("exportLedger").addEventListener("click", e => attempt(() => Api.download("/exports/ledger.csv", "stock-ledger.csv"), null, e.currentTarget));
     });
     return `
-      <div class="page-head"><div><h1>Stock ledger</h1><p class="sub">Every posted movement. Posted records are never edited — mistakes are reversed with an opposite entry.</p></div>
+      <div class="page-head"><div><h1>Stock register</h1><p class="sub">Every stock entry, newest first. Entries are never edited — a mistake is undone with an opposite entry.</p></div>
         <div class="actions"><button class="btn" id="exportLedger">Export CSV</button></div></div>
-      <form class="filters"><label>Type<select id="ledgerFilter">${plainOptions(["OPENING", "RECEIPT", "TRANSFER", "ADJUSTMENT", "DISPATCH", "REVERSAL"], type, "All types")}</select></label></form>
-      <section class="card flush" id="ledgerList">${first.transactions.length ? txnTable(first.transactions, { withActions: true }) : `<div class="empty">No transactions yet.</div>`}
+      <form class="filters"><label>Type<select id="ledgerFilter">${codeOptions(TYPE_LABEL, type, "All types")}</select></label></form>
+      <section class="card flush" id="ledgerList">${first.transactions.length ? txnTable(first.transactions, { withActions: true }) : `<div class="empty">No entries yet.</div>`}
         ${first.hasMore ? `<div class="pad-row"><button class="btn small" id="moreTxn">Load more</button></div>` : ""}</section>`;
   }
 
   /* ---------- dispatch ---------- */
 
   function dispatchTable(list) {
-    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Dispatch</th><th>Date</th><th>Client</th><th>Vehicle</th><th class="r">kg</th><th class="r">Bags</th><th class="r">Pkgs</th><th>Status</th></tr></thead><tbody>
+    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Despatch</th><th>Date</th><th>Client</th><th>Vehicle</th><th class="r">Bags / kg</th><th class="r">Labels</th><th>Status</th></tr></thead><tbody>
       ${list.map(d => `<tr><td class="mono"><a href="#/dispatch/${esc(d.id)}">${esc(d.no)}</a></td><td>${fmtDate(d.date)}</td><td>${esc(d.clientName)}</td><td class="mono">${esc(d.vehicleNo || "–")}</td>
-        <td class="r mono">${kg(d.grams)}</td><td class="r mono">${num(d.bags)}</td><td class="r">${d.packages || "–"}</td><td>${badge(d.status)}</td></tr>`).join("")}
+        <td class="r num">${qty(d.grams, d.bags)}</td><td class="r">${d.packages || "–"}</td><td>${badge(d.status)}</td></tr>`).join("")}
     </tbody></table></div>`;
   }
 
@@ -501,17 +515,17 @@
       document.getElementById("exportDisp").addEventListener("click", e => attempt(() => Api.download("/exports/dispatches.csv", "dispatch-register.csv"), null, e.currentTarget));
     });
     return `
-      <div class="page-head"><div><h1>Dispatches</h1><p class="sub">Coffee sent to clients. Each package carries its own barcode.</p></div>
-        <div class="actions"><button class="btn" id="exportDisp">Export CSV</button>${can.post() ? `<a class="btn primary" href="#/dispatch/new">+ New dispatch</a>` : ""}</div></div>
-      <form class="filters"><label>Status<select id="dispFilter">${plainOptions(["DRAFT", "DISPATCHED", "CANCELLED", "REVERSED"], st, "All")}</select></label></form>
-      <section class="card flush">${r.dispatches.length ? dispatchTable(r.dispatches) : `<div class="empty">No dispatches yet.${can.post() ? ` <a href="#/dispatch/new">Create one</a>.` : ""}</div>`}
-        ${r.hasMore ? `<p class="muted pad-row">Showing the latest 100. Use Export CSV for the full register.</p>` : ""}</section>`;
+      <div class="page-head"><div><h1>Despatches</h1><p class="sub">Coffee sent to clients. Every bag carries its own barcode label.</p></div>
+        <div class="actions"><button class="btn" id="exportDisp">Export CSV</button>${can.post() ? `<a class="btn primary" href="#/dispatch/new">+ New despatch</a>` : ""}</div></div>
+      <form class="filters"><label>Status<select id="dispFilter">${codeOptions({ DRAFT: "Loading", DISPATCHED: "Despatched", CANCELLED: "Cancelled", REVERSED: "Undone" }, st, "All")}</select></label></form>
+      <section class="card flush">${r.dispatches.length ? dispatchTable(r.dispatches) : `<div class="empty">No despatches yet.${can.post() ? ` <a href="#/dispatch/new">Start one</a>.` : ""}</div>`}
+        ${r.hasMore ? `<p class="muted pad-row">Showing the latest 100. Use Export CSV for the full despatch register.</p>` : ""}</section>`;
   }
 
   async function dispatchForm(id) {
-    if (!can.post()) return `<div class="empty">Your role cannot create dispatches.</div>`;
+    if (!can.post()) return `<div class="empty">Your role cannot create despatches.</div>`;
     const d = id ? await Api.get(`/dispatches/${encodeURIComponent(id)}`) : null;
-    if (d && d.status !== "DRAFT") return `<div class="empty">Only draft dispatches can be edited. <a href="#/dispatch/${esc(d.id)}">Back</a></div>`;
+    if (d && d.status !== "DRAFT") return `<div class="empty">Only despatches still loading can be edited. <a href="#/dispatch/${esc(d.id)}">Back</a></div>`;
     const clients = active(M.clients);
     const godowns = postGodowns();
     const lineHtml = (l = {}) => `
@@ -520,7 +534,7 @@
         <label class="grow">Lot<select name="lotId" required data-keep="${esc(l.lotId || "")}"></select></label>
         <label>Bags<input type="number" name="bags" min="0" step="1" value="${l.bags != null ? l.bags : ""}" required></label>
         <label>Net kg<input type="number" name="kg" min="0.001" step="0.001" value="${l.grams != null ? l.grams / 1000 : ""}" required ${l.grams != null ? 'data-touched="1"' : ""}></label>
-        <label title="Number of barcode labels for this line. Normally one per bag.">Packages<input type="number" name="packages" min="1" step="1" value="${l.packages || ""}" placeholder="= bags"></label>
+        <label title="Number of barcode labels for this line. Normally one per bag.">Labels<input type="number" name="packages" min="1" step="1" value="${l.packages || ""}" placeholder="= bags"></label>
         <button type="button" class="btn small ghost" data-remove aria-label="Remove line">✕</button>
       </div>`;
     then(() => {
@@ -570,20 +584,20 @@
           })
         };
         const saved = await attempt(() => d ? Api.put(`/dispatches/${d.id}`, body) : Api.post("/dispatches", body),
-          d ? "Draft updated" : "Draft saved — barcodes issued", f.querySelector("[type=submit]"));
+          d ? "Despatch updated" : "Saved — bag labels ready to print", f.querySelector("[type=submit]"));
         if (saved) location.hash = `#/dispatch/${saved.id}`;
       });
     });
     return `
-      <div class="page-head"><div><div class="crumb"><a href="#/dispatches">Dispatches</a> / ${d ? esc(d.no) : "New"}</div>
-        <h1>${d ? "Edit draft dispatch" : "New dispatch"}</h1><p class="sub">Saving the draft holds the stock and issues one barcode per package. Post it when the vehicle leaves.</p></div></div>
+      <div class="page-head"><div><div class="crumb"><a href="#/dispatches">Despatches</a> / ${d ? esc(d.no) : "New"}</div>
+        <h1>${d ? "Edit despatch" : "New despatch"}</h1><p class="sub">Saving holds the stock and creates one barcode label per bag. Confirm when the truck leaves.</p></div></div>
       ${setupNeeded()}${!clients.length ? `<div class="notice">Add a <a href="#/masters/clients">client</a> first.</div>` : ""}
-      ${d && d.packages.some(p => p.printCount) ? `<div class="notice">Labels for this draft were already printed. Changing godown, lot, bags, kg or package count will retire those barcodes and issue new ones — reprint and replace the labels.</div>` : ""}
+      ${d && d.packages.some(p => p.printCount) ? `<div class="notice">Labels for this despatch were already printed. Changing godown, lot, bags, kg or labels will cancel those barcodes and create new ones — reprint and replace the labels.</div>` : ""}
       <form class="card form" id="dispatchForm">
         <h2>Consignee &amp; transport</h2>
         <div class="form-grid">
           <label class="span-2">Client<select name="clientId" required>${options(clients, d && d.client.id, c => `${c.name} (${c.code})`, "Select client")}</select></label>
-          <label>Dispatch date<input type="date" name="date" value="${esc(d ? d.date : today())}" required></label>
+          <label>Despatch date<input type="date" name="date" value="${esc(d ? d.date : today())}" required></label>
           <label>Client order / reference<input name="reference" value="${esc(d ? d.reference : "")}" maxlength="80"></label>
           <label class="span-2">Delivery address / destination<textarea name="destination" rows="2" maxlength="300">${esc(d ? d.destination : "")}</textarea></label>
           <label>Vehicle no.<input name="vehicleNo" value="${esc(d ? d.vehicleNo : "")}" maxlength="20" placeholder="KA 12 AB 3456"></label>
@@ -597,7 +611,7 @@
         <button type="button" class="btn small" id="addLine">+ Add line</button>
         <div class="form-actions">
           <a class="btn ghost" href="${d ? `#/dispatch/${esc(d.id)}` : "#/dispatches"}">Cancel</a>
-          <button class="btn primary" type="submit">${d ? "Save changes" : "Save draft & issue barcodes"}</button>
+          <button class="btn primary" type="submit">${d ? "Save changes" : "Save & create bag labels"}</button>
         </div>
       </form>`;
   }
@@ -615,16 +629,16 @@
         if (!btn) return;
         const act = btn.dataset.act;
         if (act === "post") {
-          if (!confirm(`Post ${d.no}? Stock will be deducted and the ${pk.length} package barcodes become final.`)) return;
-          update(await attempt(() => Api.post(`/dispatches/${d.id}/post`), `${d.no} dispatched`, btn));
+          if (!confirm(`Truck left? Confirm despatch ${d.no}: ${pk.length} bag label(s) become final and the stock is deducted.`)) return;
+          update(await attempt(() => Api.post(`/dispatches/${d.id}/post`), `${d.no} despatched`, btn));
         } else if (act === "cancel") {
-          const reason = prompt(`Cancel draft ${d.no}? Held stock is released and its barcodes retired. Reason (optional):`);
+          const reason = prompt(`Cancel ${d.no}? The held stock is released and its labels cancelled. Reason (optional):`);
           if (reason == null) return;
-          update(await attempt(() => Api.post(`/dispatches/${d.id}/cancel`, { reason }), "Draft cancelled", btn));
+          update(await attempt(() => Api.post(`/dispatches/${d.id}/cancel`, { reason }), "Despatch cancelled", btn));
         } else if (act === "reverse") {
-          const reason = prompt(`Reverse ${d.no}? Use this only if the goods did NOT leave. Stock returns to the godown and barcodes are retired. Reason:`);
+          const reason = prompt(`Undo ${d.no}? Only if the coffee did NOT leave. Stock goes back to the godown and the labels are cancelled. Reason:`);
           if (reason == null) return;
-          update(await attempt(() => Api.post(`/dispatches/${d.id}/reverse`, { reason }), `${d.no} reversed`, btn));
+          update(await attempt(() => Api.post(`/dispatches/${d.id}/reverse`, { reason }), `${d.no} undone`, btn));
         } else if (act === "labels") printLabels(d, pk);
         else if (act === "note") printDispatchNote(d);
       });
@@ -643,19 +657,19 @@
     });
     return `
       <div class="page-head">
-        <div><div class="crumb"><a href="#/dispatches">Dispatches</a> / ${esc(d.no)}</div>
+        <div><div class="crumb"><a href="#/dispatches">Despatches</a> / ${esc(d.no)}</div>
           <h1><span class="mono">${esc(d.no)}</span> ${badge(d.status)}</h1>
-          <p class="sub">${esc(c.name)} · ${fmtDate(d.date)} · ${kg(tot.grams)} kg · ${num(tot.bags)} bags · ${pk.length} packages</p></div>
+          <p class="sub">${esc(c.name)} · ${fmtDate(d.date)} · ${num(tot.bags)} bags · ${kg(tot.grams)} kg · ${pk.length} labels</p></div>
         <div class="actions page-actions">
           ${pk.length ? `<button class="btn" data-act="labels">Print labels (${pk.length})</button>` : ""}
-          <button class="btn" data-act="note">Print dispatch note</button>
-          ${draft && can.post() ? `<a class="btn" href="#/dispatch/${esc(d.id)}/edit">Edit</a><button class="btn danger ghost" data-act="cancel">Cancel draft</button><button class="btn primary" data-act="post">Post dispatch</button>` : ""}
-          ${d.status === "DISPATCHED" && can.manage() ? `<button class="btn danger ghost" data-act="reverse">Reverse</button>` : ""}
+          <button class="btn" data-act="note">Print despatch note</button>
+          ${draft && can.post() ? `<a class="btn" href="#/dispatch/${esc(d.id)}/edit">Edit</a><button class="btn danger ghost" data-act="cancel">Cancel</button><button class="btn primary" data-act="post">Truck left — confirm</button>` : ""}
+          ${d.status === "DISPATCHED" && can.manage() ? `<button class="btn danger ghost" data-act="reverse">Undo despatch</button>` : ""}
         </div>
       </div>
-      ${draft ? `<div class="notice">Draft: stock is held for this dispatch but not yet deducted. Print and stick the labels, check weights, then <strong>Post dispatch</strong> when the vehicle leaves.</div>` : ""}
-      ${d.status === "REVERSED" ? `<div class="notice warn">Reversed: ${esc(d.statusReason)}. Stock was returned to the godown; barcodes are retired.</div>` : ""}
-      ${d.status === "CANCELLED" ? `<div class="notice warn">Cancelled draft${d.statusReason ? `: ${esc(d.statusReason)}` : ""}. Barcodes are retired.</div>` : ""}
+      ${draft ? `<div class="notice">Loading: the stock is held but not yet deducted. Print and stick the labels, check the weights, then press <strong>Truck left — confirm</strong> when the vehicle goes.</div>` : ""}
+      ${d.status === "REVERSED" ? `<div class="notice warn">Undone: ${esc(d.statusReason)}. The stock went back to the godown; its labels are cancelled.</div>` : ""}
+      ${d.status === "CANCELLED" ? `<div class="notice warn">Cancelled${d.statusReason ? `: ${esc(d.statusReason)}` : ""}. Its labels are cancelled.</div>` : ""}
       <div class="grid-2">
         <section class="card"><h2>Consignee</h2>
           <dl class="facts one">
@@ -671,25 +685,25 @@
             <div><dt>Transporter</dt><dd>${esc(d.transporter || "–")}</dd></div>
             <div><dt>Driver</dt><dd>${esc([d.driverName, d.driverPhone].filter(Boolean).join(" · ") || "–")}</dd></div>
             <div><dt>Created</dt><dd>${fmtTime(d.createdAt)}${d.createdBy ? ` by ${esc(d.createdBy)}` : ""}</dd></div>
-            ${d.postedAt ? `<div><dt>Posted</dt><dd>${fmtTime(d.postedAt)}${d.postedBy ? ` by ${esc(d.postedBy)}` : ""}</dd></div>` : ""}
+            ${d.postedAt ? `<div><dt>Despatched</dt><dd>${fmtTime(d.postedAt)}${d.postedBy ? ` by ${esc(d.postedBy)}` : ""}</dd></div>` : ""}
             ${d.notes ? `<div><dt>Notes</dt><dd class="pre">${esc(d.notes)}</dd></div>` : ""}
           </dl></section>
       </div>
       <section class="card flush"><h2>Lines</h2>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Godown</th><th>Lot</th><th>Item</th><th class="r">Bags</th><th class="r">Net kg</th><th class="r">Packages</th>${draft ? "<th>Packages add up?</th>" : ""}</tr></thead><tbody>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Godown</th><th>Lot</th><th>Coffee</th><th class="r">Bags</th><th class="r">Net kg</th><th class="r">Labels</th>${draft ? "<th>Bag weights add up?</th>" : ""}</tr></thead><tbody>
         ${d.lines.map(l => `<tr><td>${l.lineNo}</td><td>${esc(l.godownName)}</td><td class="mono"><a href="#/lot/${esc(l.lotId)}">${esc(l.lotCode)}</a></td><td>${esc(l.itemName)}</td>
-          <td class="r mono">${num(l.bags)}</td><td class="r mono">${kg(l.grams)}</td><td class="r">${l.packages}</td>
-          ${draft ? `<td>${l.reconciles ? `<span class="badge green">Yes</span>` : `<span class="badge red">Packages ${kg(l.packageGrams)} kg / ${l.packageBags} bags</span>`}</td>` : ""}</tr>`).join("")}
+          <td class="r num">${num(l.bags)}</td><td class="r num">${kg(l.grams)}</td><td class="r">${l.packages}</td>
+          ${draft ? `<td>${l.reconciles ? `<span class="badge green">Yes</span>` : `<span class="badge red">Labels total ${num(l.packageBags)} bags / ${kg(l.packageGrams)} kg</span>`}</td>` : ""}</tr>`).join("")}
         </tbody></table></div>
       </section>
-      <section class="card flush"><h2>Packages &amp; barcodes</h2>
+      <section class="card flush"><h2>Bag labels</h2>
         <form id="weightsForm">
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Package</th><th>Barcode</th><th>Lot</th><th class="r">Bags</th><th class="r">Net kg</th><th>Status</th><th class="r">Printed</th><th></th></tr></thead><tbody>
-        ${pk.map(p => `<tr><td class="mono">${p.seq} of ${pk.length}</td><td><a class="mono" href="#/track/${esc(p.barcode)}">${esc(p.barcode)}</a></td><td class="mono">${esc(p.lotCode)}</td><td class="r mono">${p.bags}</td>
-          <td class="r">${draft && can.post() ? `<input class="wt" type="number" min="0.001" step="0.001" value="${p.grams / 1000}" data-pkg="${esc(p.id)}" aria-label="Net kg for package ${p.seq}">` : `<span class="mono">${kg(p.grams)}</span>`}</td>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Label</th><th>Barcode</th><th>Lot</th><th class="r">Bags</th><th class="r">Net kg</th><th>Status</th><th class="r">Printed</th><th></th></tr></thead><tbody>
+        ${pk.map(p => `<tr><td class="mono">${p.seq} of ${pk.length}</td><td><a class="mono" href="#/track/${esc(p.barcode)}">${esc(p.barcode)}</a></td><td class="mono">${esc(p.lotCode)}</td><td class="r num">${p.bags}</td>
+          <td class="r">${draft && can.post() ? `<input class="wt" type="number" min="0.001" step="0.001" value="${p.grams / 1000}" data-pkg="${esc(p.id)}" aria-label="Net kg for bag label ${p.seq}">` : `<span class="num">${kg(p.grams)}</span>`}</td>
           <td>${badge(p.status)}</td><td class="r">${p.printCount || 0}×</td><td><button type="button" class="btn small ghost" data-print-one="${esc(p.id)}">Label</button></td></tr>`).join("")}
         </tbody></table></div>
-        ${draft && can.post() ? `<div class="form-actions pad-row"><span class="muted">Weighed each bag? Enter actual net kg per package; totals must match the line before posting.</span><button class="btn" type="submit">Save weights</button></div>` : ""}
+        ${draft && can.post() ? `<div class="form-actions pad-row"><span class="muted">Weighed each bag? Enter its actual net kg; the totals must match the line before the truck is confirmed.</span><button class="btn" type="submit">Save weights</button></div>` : ""}
         </form>
       </section>`;
   }
@@ -707,10 +721,10 @@
   function labelHtml(d, p, count) {
     const line = d.lines.find(l => l.id === p.lineId) || d.lines[0] || {};
     return `<div class="label">
-      <div class="lb-top"><span class="lb-org">${esc(M.org.name)}</span><span class="lb-pkg">PKG ${p.seq} / ${count}</span></div>
+      <div class="lb-top"><span class="lb-org">${esc(M.org.name)}</span><span class="lb-pkg">BAG ${p.seq} / ${count}</span></div>
       <div class="lb-to"><span class="lb-k">TO</span> <strong>${esc(d.client.name)}</strong><div class="lb-addr">${esc((d.destination || "").split("\n")[0])}</div></div>
       <div class="lb-grid">
-        <div><span class="lb-k">Dispatch</span><b>${esc(d.no)}</b></div>
+        <div><span class="lb-k">Despatch</span><b>${esc(d.no)}</b></div>
         <div><span class="lb-k">Date</span><b>${fmtDate(d.date)}</b></div>
         <div><span class="lb-k">Vehicle</span><b>${esc(d.vehicleNo || "–")}</b></div>
         <div class="span-3"><span class="lb-k">Coffee</span><b>${esc(line.itemName || "")}</b> ${esc(itemMeta(line))}</div>
@@ -736,9 +750,9 @@
     const tot = d.lines.reduce((s, l) => ({ grams: s.grams + l.grams, bags: s.bags + l.bags }), { grams: 0, bags: 0 });
     const html = `<div class="note">
       <header class="nt-head"><div><div class="nt-org">${esc(M.org.name)}</div><div class="nt-sub">${esc(M.org.address || "")}</div></div>
-        <div class="nt-title">DISPATCH NOTE${d.status === "DRAFT" ? " <span>(DRAFT — not yet posted)</span>" : ""}${d.status === "REVERSED" || d.status === "CANCELLED" ? ` <span>(${esc(d.status)})</span>` : ""}</div></header>
+        <div class="nt-title">DESPATCH NOTE${d.status === "DRAFT" ? " <span>(LOADING — not yet confirmed)</span>" : ""}${d.status === "REVERSED" || d.status === "CANCELLED" ? ` <span>(${esc(STATUS_LABEL[d.status].toUpperCase())})</span>` : ""}</div></header>
       <div class="nt-meta">
-        <div><span>Dispatch no.</span><b>${esc(d.no)}</b></div><div><span>Date</span><b>${fmtDate(d.date)}</b></div>
+        <div><span>Despatch no.</span><b>${esc(d.no)}</b></div><div><span>Date</span><b>${fmtDate(d.date)}</b></div>
         <div><span>Vehicle no.</span><b>${esc(d.vehicleNo || "")}</b></div><div><span>Transporter</span><b>${esc(d.transporter || "")}</b></div>
         <div><span>Driver</span><b>${esc([d.driverName, d.driverPhone].filter(Boolean).join(" · "))}</b></div><div><span>Client ref.</span><b>${esc(d.reference || "")}</b></div>
       </div>
@@ -746,7 +760,7 @@
       <table class="nt-tbl"><thead><tr><th>#</th><th>Coffee</th><th>Lot</th><th>From godown</th><th class="r">Bags</th><th class="r">Net kg</th></tr></thead><tbody>
         ${d.lines.map(l => `<tr><td>${l.lineNo}</td><td>${esc(l.itemName)}<div class="muted">${esc(itemMeta(l))}</div></td><td>${esc(l.lotCode)}</td><td>${esc(l.godownName)}</td><td class="r">${num(l.bags)}</td><td class="r">${kg(l.grams)}</td></tr>`).join("")}
       </tbody><tfoot><tr><td colspan="4">Total</td><td class="r">${num(tot.bags)}</td><td class="r">${kg(tot.grams)}</td></tr></tfoot></table>
-      ${pk.length ? `<h3>Packages (${pk.length}) — scan any label to trace</h3>
+      ${pk.length ? `<h3>Bag labels (${pk.length}) — scan any label to trace</h3>
       <div class="nt-pkgs">${pk.map(p => `<div class="nt-pkg"><div class="nt-pkg-code">${Code128.svg(p.barcode, { moduleWidth: 1, height: 26 })}</div><div><b>${p.seq}/${pk.length}</b> ${esc(p.barcode)}<br>${esc(p.lotCode)} · ${kg(p.grams)} kg · ${p.bags} bag${p.bags === 1 ? "" : "s"}</div></div>`).join("")}</div>` : ""}
       ${d.notes ? `<p><b>Notes:</b> ${esc(d.notes)}</p>` : ""}
       <div class="nt-sign"><div>Prepared by</div><div>Checked by (godown)</div><div>Driver</div><div>Received by (consignee)</div></div>
@@ -765,23 +779,23 @@
     });
     let body = "";
     if (t && !t.found) {
-      body = `<div class="notice warn">No package found for <span class="mono">${esc(t.value)}</span>.${t.validFormat ? "" : " The code does not look valid — check for a mistyped character."}</div>`;
+      body = `<div class="notice warn">No bag label found for <span class="mono">${esc(t.value)}</span>.${t.validFormat ? "" : " The code does not look valid — check for a mistyped character."}</div>`;
     } else if (t) {
       const p = t.package, d = t.dispatch;
       const steps = [
-        ...t.receipts.map(r => ({ at: r.postedAt, text: `${r.type === "OPENING" ? "Opening stock" : "Received"} into ${r.godownName}`, ref: r.no })),
-        { at: p.createdAt, text: "Package created, barcode issued", ref: d.no },
-        ...(p.dispatchedAt ? [{ at: p.dispatchedAt, text: `Dispatched to ${t.client.name}${d.vehicleNo ? ` on vehicle ${d.vehicleNo}` : ""}`, ref: d.no }] : []),
-        ...(p.cancelledAt ? [{ at: p.cancelledAt, text: d.status === "REVERSED" ? `Dispatch reversed: ${d.statusReason}` : "Barcode retired (draft changed or cancelled)", ref: "" }] : [])
+        ...t.receipts.map(r => ({ at: r.postedAt, text: `${r.type === "OPENING" ? "Opening stock" : "Inward"} into ${r.godownName}`, ref: r.no })),
+        { at: p.createdAt, text: "Bag label created", ref: d.no },
+        ...(p.dispatchedAt ? [{ at: p.dispatchedAt, text: `Despatched to ${t.client.name}${d.vehicleNo ? ` on vehicle ${d.vehicleNo}` : ""}`, ref: d.no }] : []),
+        ...(p.cancelledAt ? [{ at: p.cancelledAt, text: d.status === "REVERSED" ? `Despatch undone: ${d.statusReason}` : "Label cancelled (despatch changed or cancelled)", ref: "" }] : [])
       ].sort((a, b) => a.at.localeCompare(b.at));
       body = `
         <section class="card trace">
           <div class="trace-head"><div class="trace-code">${Code128.svg(p.barcode, { moduleWidth: 2, height: 46 })}<div class="mono">${esc(p.barcode)}</div></div>
-            <div><div class="muted">Package</div><div class="big mono">${esc(t.packageNo)}</div><div>${p.seq} of ${t.packageCount} · ${badge(p.status)}</div></div></div>
+            <div><div class="muted">Bag label</div><div class="big mono">${esc(t.packageNo)}</div><div>${p.seq} of ${t.packageCount} · ${badge(p.status)}</div></div></div>
           <dl class="facts">
             <div><dt>Client</dt><dd>${esc(t.client.name)}</dd></div>
-            <div><dt>Dispatch</dt><dd><a class="mono" href="#/dispatch/${esc(d.id)}">${esc(d.no)}</a> ${badge(d.status)}</dd></div>
-            <div><dt>Dispatch date</dt><dd>${fmtDate(d.date)}</dd></div>
+            <div><dt>Despatch</dt><dd><a class="mono" href="#/dispatch/${esc(d.id)}">${esc(d.no)}</a> ${badge(d.status)}</dd></div>
+            <div><dt>Despatch date</dt><dd>${fmtDate(d.date)}</dd></div>
             <div><dt>Vehicle / driver</dt><dd>${esc([d.vehicleNo, d.driverName].filter(Boolean).join(" · ") || "–")}</dd></div>
             <div><dt>Deliver to</dt><dd class="pre">${esc(d.destination || "–")}</dd></div>
             <div><dt>Coffee</dt><dd>${esc(t.item.name)}<div class="muted">${esc(itemMeta(t.item))}</div></dd></div>
@@ -795,7 +809,7 @@
         </section>`;
     }
     return `
-      <div class="page-head"><div><h1>Track a package</h1><p class="sub">Scan a label with a USB/Bluetooth scanner or type the code printed under the barcode.</p></div></div>
+      <div class="page-head"><div><h1>Track a bag</h1><p class="sub">Scan a label with a USB/Bluetooth scanner or type the code printed under the barcode.</p></div></div>
       <form class="card form track-form" id="trackForm"><label class="grow">Barcode<input name="code" class="mono" value="${esc(t ? t.value : "")}" placeholder="PKG-XXXXXXXXXXX" autocomplete="off"></label><button class="btn primary" type="submit">Track</button></form>
       ${body}`;
   }
@@ -813,7 +827,7 @@
       body: d => ({ code: d.code, name: d.name, address: d.address })
     },
     items: {
-      title: "Coffee items", one: "item",
+      title: "Coffee", one: "coffee item",
       cols: [["code", "Code"], ["name", "Name"], ["coffeeType", "Type"], ["form", "Form"], ["grade", "Grade"], ["bagGrams", "Std bag kg", g => g ? kg(g) : ""]],
       fields: it => `
         <label>Code<input name="code" value="${esc(it.code)}" required maxlength="30" placeholder="ARA-PCH-A"></label>
@@ -896,17 +910,17 @@
       });
     });
     return `
-      <div class="page-head"><div><h1>Users</h1><p class="sub">Who can sign in, and what they can do. Operators post only in the godowns assigned to them.</p></div>
+      <div class="page-head"><div><h1>Users</h1><p class="sub">Who can sign in, and what they can do. Godown operators work only in the godowns ticked for them.</p></div>
         <div class="actions"><a class="btn primary" href="#/users/new">+ Add user</a></div></div>
       ${showForm ? `<form class="card form" id="userForm"><h2>${rec ? `Edit ${esc(rec.login)}` : "New user"}</h2><div class="form-grid">
         ${rec ? "" : `<label>Login (email, phone or short ID)<input name="login" required maxlength="120" autocomplete="off"></label>`}
         <label>Full name<input name="name" value="${esc(rec ? rec.name : "")}" required maxlength="80"></label>
         <label>Role<select name="role">${Object.entries(ROLE_LABEL).map(([k, v]) => `<option value="${k}" ${(rec ? rec.role : "operator") === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <label>${rec ? "New password (leave blank to keep)" : "Password"}<input name="password" type="password" minlength="8" maxlength="200" ${rec ? "" : "required"} autocomplete="new-password"></label>
-        <fieldset class="span-2 seg" data-godowns><legend>Godowns this operator can post in</legend>${godownChecks(rec ? rec.godownIds : [])}</fieldset>
+        <fieldset class="span-2 seg" data-godowns><legend>Godowns this operator works in</legend>${godownChecks(rec ? rec.godownIds : [])}</fieldset>
         ${rec ? `<label class="check span-2"><input type="checkbox" name="active" ${rec.active ? "checked" : ""}> Active (can sign in)</label>` : ""}
       </div>
-      <div class="role-help muted">Administrator: everything incl. users and settings · Manager: masters, all stock, adjustments, reversals · Godown operator: receive, transfer, dispatch in assigned godowns · Viewer: read only.</div>
+      <div class="role-help muted">Administrator: everything, including users and settings · Manager: masters, all stock, adjustments, undo · Godown operator: inward, transfer and despatch in their godowns · Viewer: read only.</div>
       <div class="form-actions"><a class="btn ghost" href="#/users">Cancel</a><button class="btn primary" type="submit">Save</button></div></form>` : ""}
       <section class="card flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Login</th><th>Role</th><th>Godowns</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>
         ${users.map(u => `<tr class="${u.active ? "" : "inactive"}"><td>${esc(u.name)}</td><td class="mono">${esc(u.login)}</td><td>${esc(ROLE_LABEL[u.role])}</td>
@@ -937,7 +951,7 @@
       document.getElementById("testLabel").addEventListener("click", () => {
         const w = o.labelWidthMm, h = o.labelHeightMm;
         printNow(`<div class="labels" style="--lw:${w}mm;--lh:${h}mm"><div class="label"><div class="lb-top"><span class="lb-org">${esc(o.name)}</span><span class="lb-pkg">TEST LABEL</span></div>
-          <div class="lb-to">${w} × ${h} mm — check the bars are sharp and that this code scans.</div><div class="lb-grid"><div class="span-3"><span class="lb-k">Dispatch</span><b>DSP-TEST-00000</b></div></div>
+          <div class="lb-to">${w} × ${h} mm — check the bars are sharp and that this code scans.</div><div class="lb-grid"><div class="span-3"><span class="lb-k">Despatch</span><b>DSP-TEST-00000</b></div></div>
           <div class="lb-code">${Code128.svg("PKG-TEST000000", { moduleWidth: 2, height: 50 })}</div><div class="lb-value">PKG-TEST000000</div></div></div>`, `size: ${w}mm ${h}mm; margin: 0;`);
       });
     });
@@ -948,7 +962,7 @@
         <h2>Organisation &amp; labels</h2>
         <div class="form-grid">
           <label>Organisation name (on labels &amp; notes)<input name="name" value="${esc(o.name)}" maxlength="80" required ${dis}></label>
-          <label class="span-2">Address (on dispatch note)<input name="address" value="${esc(o.address || "")}" maxlength="200" ${dis}></label>
+          <label class="span-2">Address (on despatch note)<input name="address" value="${esc(o.address || "")}" maxlength="200" ${dis}></label>
           <label>Label width (mm)<input type="number" name="labelWidthMm" value="${esc(o.labelWidthMm)}" min="40" max="200" ${dis}></label>
           <label>Label height (mm)<input type="number" name="labelHeightMm" value="${esc(o.labelHeightMm)}" min="30" max="200" ${dis}></label>
         </div>

@@ -204,9 +204,9 @@ stockRoutes.post('/transactions/:id/reverse', requireRole('admin', 'manager'), a
   const db = c.env.DB;
   const txn = await db.prepare('SELECT * FROM stock_txns WHERE id = ? AND org_id = ?').bind(c.req.param('id'), auth.orgId).first<Record<string, string>>();
   if (!txn) throw notFound('Transaction');
-  if (txn.type === 'DISPATCH') throw invalid('Reverse a dispatch from the dispatch screen');
-  if (txn.type === 'REVERSAL') throw invalid('A reversal cannot itself be reversed. Post a new transaction instead.');
-  if (txn.status !== 'POSTED') throw conflict(`${txn.no} has already been reversed`);
+  if (txn.type === 'DISPATCH') throw invalid('Undo a despatch from its despatch page');
+  if (txn.type === 'REVERSAL') throw invalid('An undo cannot itself be undone. Record a new entry instead.');
+  if (txn.status !== 'POSTED') throw conflict(`${txn.no} has already been undone`);
   const rev = await reversalStatements(db, auth.orgId, auth.userId, txn, input.reason);
   await db.batch([
     db.prepare("UPDATE stock_txns SET status = 'REVERSED' WHERE id = ? AND status = 'POSTED'").bind(txn.id),

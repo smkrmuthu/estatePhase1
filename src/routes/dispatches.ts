@@ -36,7 +36,7 @@ type DispatchRow = Record<string, string | null>;
 
 async function loadDispatch(db: D1Database, orgId: string, dispatchId: string) {
   const d = await db.prepare('SELECT * FROM dispatches WHERE id = ? AND org_id = ?').bind(dispatchId, orgId).first<DispatchRow>();
-  if (!d) throw notFound('Dispatch');
+  if (!d) throw notFound('Despatch');
   return d;
 }
 
@@ -52,7 +52,7 @@ async function cleanLines(c: { env: { DB: D1Database }; get: (k: 'auth') => Auth
     out.push({ ...l, itemId: lot.item_id, packages, lineNo: i + 1 });
   }
   const total = out.reduce((s, l) => s + l.packages, 0);
-  if (total > MAX_PACKAGES) throw invalid(`A dispatch can have at most ${MAX_PACKAGES} packages (this one has ${total})`);
+  if (total > MAX_PACKAGES) throw invalid(`A despatch can have at most ${MAX_PACKAGES} bag labels (this one has ${total})`);
   return out;
 }
 
@@ -131,7 +131,7 @@ async function detail(db: D1Database, orgId: string, dispatchId: string) {
     SELECT d.*, cu.full_name AS created_by_name, pu.full_name AS posted_by_name FROM dispatches d
     LEFT JOIN users cu ON cu.id = d.created_by LEFT JOIN users pu ON pu.id = d.posted_by
     WHERE d.id = ? AND d.org_id = ?`).bind(dispatchId, orgId).first<DispatchRow>();
-  if (!d) throw notFound('Dispatch');
+  if (!d) throw notFound('Despatch');
   const client = await db.prepare('SELECT * FROM clients WHERE id = ?').bind(d.client_id).first<Record<string, string>>();
   const lines = await db.prepare(`
     SELECT l.*, lt.code AS lot_code, i.name AS item_name, i.coffee_type, i.form, i.grade, g.name AS godown_name
@@ -199,7 +199,7 @@ dispatchRoutes.put('/dispatches/:id', poster, async (c) => {
   const auth = c.get('auth');
   const db = c.env.DB;
   const d = await loadDispatch(db, auth.orgId, c.req.param('id')!);
-  if (d.status !== 'DRAFT') throw conflict('Only draft dispatches can be edited');
+  if (d.status !== 'DRAFT') throw conflict('Only despatches still loading can be edited');
   const input = await body(c, draftSchema);
   const client = await requireClient(db, auth.orgId, input.clientId);
   const lines = await cleanLines(c, input.lines);
@@ -231,14 +231,14 @@ dispatchRoutes.put('/dispatches/:id/package-weights', poster, async (c) => {
   const auth = c.get('auth');
   const db = c.env.DB;
   const d = await loadDispatch(db, auth.orgId, c.req.param('id')!);
-  if (d.status !== 'DRAFT') throw conflict('Package weights can only be changed on a draft');
+  if (d.status !== 'DRAFT') throw conflict('Bag weights can only be changed while loading');
   await assertDispatchGodowns(c, d.id!);
   const input = await body(c, z.object({ weights: z.record(z.string(), grams) }));
   const ids = Object.keys(input.weights);
   if (!ids.length) throw invalid('No weights given');
   const found = await db.prepare(`SELECT COUNT(*) AS n FROM dispatch_packages WHERE dispatch_id = ? AND status = 'PREPARED' AND id IN (${ids.map(() => '?').join(',')})`)
     .bind(d.id, ...ids).first<{ n: number }>();
-  if (found!.n !== ids.length) throw invalid('Some packages are not on this draft');
+  if (found!.n !== ids.length) throw invalid('Some bags are not on this despatch');
   await db.batch([
     ...ids.map((pid) => db.prepare('UPDATE dispatch_packages SET grams = ? WHERE id = ? AND dispatch_id = ?').bind(input.weights[pid], pid, d.id)),
     db.prepare('UPDATE dispatches SET updated_at = ? WHERE id = ?').bind(nowIso(), d.id),
@@ -253,10 +253,10 @@ dispatchRoutes.post('/dispatches/:id/post', poster, async (c) => {
   const auth = c.get('auth');
   const db = c.env.DB;
   const d = await loadDispatch(db, auth.orgId, c.req.param('id')!);
-  if (d.status !== 'DRAFT') throw conflict(`${d.no} is already ${String(d.status).toLowerCase()}`);
+  if (d.status !== 'DRAFT') throw conflict(`${d.no} is already ${d.status === 'DISPATCHED' ? 'despatched' : String(d.status).toLowerCase()}`);
   const info = await detail(db, auth.orgId, d.id!);
   const bad = info.lines.find((l) => !l.reconciles);
-  if (bad) throw invalid(`Line ${bad.lineNo}: packages total ${kg(Number(bad.packageGrams))} kg / ${bad.packageBags} bags but the line is ${kg(Number(bad.grams))} kg / ${bad.bags} bags. Fix package weights first.`);
+  if (bad) throw invalid(`Line ${bad.lineNo}: packages total ${kg(Number(bad.packageGrams))} kg / ${bad.packageBags} bags but the line is ${kg(Number(bad.grams))} kg / ${bad.bags} bags. Fix the bag weights first.`);
   await assertGodownAccess(c, info.lines.map((l) => String(l.locationId)));
   const entries = info.lines.map((l) => ({ locationId: String(l.locationId), lotId: String(l.lotId), itemId: String(l.itemId), grams: -Number(l.grams), bags: -Number(l.bags) }));
   await assertAvailable(db, auth.orgId, entries.map((e) => ({ ...e, grams: -e.grams, bags: -e.bags })), d.id!);
@@ -277,7 +277,7 @@ dispatchRoutes.post('/dispatches/:id/cancel', poster, async (c) => {
   const auth = c.get('auth');
   const db = c.env.DB;
   const d = await loadDispatch(db, auth.orgId, c.req.param('id')!);
-  if (d.status !== 'DRAFT') throw conflict('Only draft dispatches can be cancelled');
+  if (d.status !== 'DRAFT') throw conflict('Only despatches still loading can be cancelled');
   await assertDispatchGodowns(c, d.id!);
   const input = await body(c, z.object({ reason: text(300) }));
   const at = nowIso();
@@ -295,7 +295,7 @@ dispatchRoutes.post('/dispatches/:id/reverse', requireRole('admin', 'manager'), 
   const auth = c.get('auth');
   const db = c.env.DB;
   const d = await loadDispatch(db, auth.orgId, c.req.param('id')!);
-  if (d.status !== 'DISPATCHED') throw conflict('Only dispatched (posted) dispatches can be reversed');
+  if (d.status !== 'DISPATCHED') throw conflict('Only despatches whose truck has left can be undone');
   const input = await body(c, z.object({ reason: z.string().trim().min(3, 'Give a reason (at least 3 characters)').max(300) }));
   const txn = await db.prepare('SELECT * FROM stock_txns WHERE id = ?').bind(d.txn_id).first<Record<string, string>>();
   const rev = await reversalStatements(db, auth.orgId, auth.userId, txn!, input.reason);
@@ -378,9 +378,9 @@ dispatchRoutes.get('/dashboard', async (c) => {
   const [byGodown, byItem, reserved, drafts, monthly, lots] = await db.batch([
     db.prepare("SELECT g.id, g.name, COALESCE(SUM(e.grams), 0) AS grams, COALESCE(SUM(e.bags), 0) AS bags FROM locations g LEFT JOIN stock_ledger e ON e.location_id = g.id WHERE g.org_id = ? AND g.kind = 'GODOWN' AND g.active = 1 GROUP BY g.id ORDER BY g.name").bind(orgId),
     db.prepare('SELECT i.id, i.name, i.coffee_type, i.form, i.grade, SUM(e.grams) AS grams, SUM(e.bags) AS bags FROM stock_ledger e JOIN items i ON i.id = e.item_id WHERE e.org_id = ? GROUP BY i.id HAVING SUM(e.grams) <> 0 OR SUM(e.bags) <> 0 ORDER BY i.name').bind(orgId),
-    db.prepare("SELECT COALESCE(SUM(l.grams), 0) AS grams FROM dispatch_lines l JOIN dispatches d ON d.id = l.dispatch_id WHERE d.org_id = ? AND d.status = 'DRAFT' AND l.superseded_at IS NULL").bind(orgId),
+    db.prepare("SELECT COALESCE(SUM(l.grams), 0) AS grams, COALESCE(SUM(l.bags), 0) AS bags FROM dispatch_lines l JOIN dispatches d ON d.id = l.dispatch_id WHERE d.org_id = ? AND d.status = 'DRAFT' AND l.superseded_at IS NULL").bind(orgId),
     db.prepare("SELECT d.id, d.no, d.status, d.dispatch_date, d.vehicle_no, c.name AS client_name, (SELECT COALESCE(SUM(grams), 0) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS grams, (SELECT COALESCE(SUM(bags), 0) FROM dispatch_lines WHERE dispatch_id = d.id AND superseded_at IS NULL) AS bags, (SELECT COUNT(*) FROM dispatch_packages WHERE dispatch_id = d.id AND status <> 'CANCELLED') AS packages FROM dispatches d JOIN clients c ON c.id = d.client_id WHERE d.org_id = ? AND d.status = 'DRAFT' ORDER BY d.created_at DESC LIMIT 20").bind(orgId),
-    db.prepare("SELECT COUNT(DISTINCT d.id) AS n, COALESCE(SUM(l.grams), 0) AS grams FROM dispatches d JOIN dispatch_lines l ON l.dispatch_id = d.id AND l.superseded_at IS NULL WHERE d.org_id = ? AND d.status = 'DISPATCHED' AND substr(d.dispatch_date, 1, 7) = ?").bind(orgId, month),
+    db.prepare("SELECT COUNT(DISTINCT d.id) AS n, COALESCE(SUM(l.grams), 0) AS grams, COALESCE(SUM(l.bags), 0) AS bags FROM dispatches d JOIN dispatch_lines l ON l.dispatch_id = d.id AND l.superseded_at IS NULL WHERE d.org_id = ? AND d.status = 'DISPATCHED' AND substr(d.dispatch_date, 1, 7) = ?").bind(orgId, month),
     db.prepare('SELECT COUNT(*) AS n FROM (SELECT lot_id FROM stock_ledger WHERE org_id = ? GROUP BY lot_id HAVING SUM(grams) > 0)').bind(orgId)
   ]);
   type R = Record<string, string | number>;
@@ -389,9 +389,11 @@ dispatchRoutes.get('/dashboard', async (c) => {
     onHandGrams: g.reduce((s, r) => s + Number(r.grams), 0),
     onHandBags: g.reduce((s, r) => s + Number(r.bags), 0),
     reservedGrams: Number((reserved.results[0] as R).grams),
+    reservedBags: Number((reserved.results[0] as R).bags),
     draftCount: drafts.results.length,
     monthDispatchCount: Number((monthly.results[0] as R).n),
     monthDispatchGrams: Number((monthly.results[0] as R).grams),
+    monthDispatchBags: Number((monthly.results[0] as R).bags),
     lotsInStock: Number((lots.results[0] as R).n),
     byGodown: g.map((r) => ({ id: r.id, name: r.name, grams: r.grams, bags: r.bags })),
     byItem: (byItem.results as R[]).map((r) => ({ id: r.id, name: r.name, coffeeType: r.coffee_type, form: r.form, grade: r.grade, grams: r.grams, bags: r.bags })),
