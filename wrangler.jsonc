@@ -36,6 +36,7 @@
         {
           "binding": "DB",
           "database_name": "estate-demo-db",
+          "database_id": "28cb1298-82f3-4308-82bc-94856884a024",
           "migrations_dir": "migrations"
         }
       ],
