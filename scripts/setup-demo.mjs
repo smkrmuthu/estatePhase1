@@ -4,6 +4,8 @@
 // site. Safe to run again: each step skips what is already done.
 //
 //   npm run demo:setup -- --login demo.admin
+//   npm run demo:setup -- --reset              empty the demo site and fill it again
+//   add --size full for the larger six-month data set (default: small)
 //
 // Steps: create the database and save its ID in wrangler.jsonc, create the tables,
 // deploy, set a sign-in secret, create the admin, then fill it with demo data
@@ -21,6 +23,7 @@ const opt = (name, fallback) => {
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : fallback;
 };
 const login = opt('login', 'demo.admin');
+const size = opt('size', 'small');
 const env = { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' };
 
 const wrangler = (wArgs, input) =>
@@ -32,12 +35,27 @@ async function ask(question) {
   return new Promise((res) => rl.question(question, (a) => { rl.close(); res(a); }));
 }
 
-// 1. Database, and its ID in wrangler.jsonc (env.demo).
-step(`Database ${DB}`);
 const findId = () => {
   const out = wrangler(['d1', 'list', '--json']);
   return JSON.parse(out.slice(out.indexOf('['))).find((d) => d.name === DB)?.uuid;
 };
+
+// 0. --reset: delete the demo database (everything on the demo site, users too).
+if (args.includes('--reset')) {
+  step(`Emptying the demo site (deletes ${DB})`);
+  const answer = await ask(`Type ${DB} to delete all data on ${SITE}: `);
+  if (answer.trim() !== DB) {
+    console.log('  Not deleted.');
+    process.exit(1);
+  }
+  const old = findId();
+  if (old) wrangler(['d1', 'delete', DB, '-y']);
+  writeFileSync('wrangler.jsonc', readFileSync('wrangler.jsonc', 'utf8').replace(/\n\s*"database_id": "[^"]*",(?=\s*"migrations_dir": "migrations"\s*}\s*\]\s*,\s*"routes": \[\s*{ "pattern": "estate-demo)/, ''));
+  console.log('  deleted');
+}
+
+// 1. Database, and its ID in wrangler.jsonc (env.demo).
+step(`Database ${DB}`);
 let id = findId();
 if (!id) {
   wrangler(['d1', 'create', DB]);
@@ -46,6 +64,7 @@ if (!id) {
 if (!id) throw new Error(`Could not find the ID of ${DB}. Check \`npx wrangler d1 list\`.`);
 const cfg = readFileSync('wrangler.jsonc', 'utf8');
 if (!cfg.includes(id)) {
+  if (/"database_name": "estate-demo-db",\s*"database_id"/.test(cfg)) throw new Error('wrangler.jsonc has an old database_id for the demo site. Remove that line, or run with --reset.');
   const marker = `"database_name": "${DB}",`;
   if (!cfg.includes(marker)) throw new Error(`wrangler.jsonc has no ${marker} line under env.demo`);
   writeFileSync('wrangler.jsonc', cfg.replace(marker, `${marker}\n          "database_id": "${id}",`));
@@ -92,7 +111,7 @@ for (let i = 0; ; i++) {
 }
 step('Demo data and checks');
 try {
-  execFileSync('node', ['scripts/seed-demo.mjs', '--url', SITE, '--login', login, '--password', password], { stdio: 'inherit', env });
+  execFileSync('node', ['scripts/seed-demo.mjs', '--url', SITE, '--login', login, '--password', password, '--size', size], { stdio: 'inherit', env });
 } catch {
   // seed-demo prints its own reasons (e.g. demo data already there, or a failed check).
 }

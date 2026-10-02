@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-// Fills an Estate site with six months of realistic demo data, through the API, and
-// checks every stock and despatch rule along the way (each refused action must be
-// refused). Prints a PASS/FAIL list and the demo users' logins at the end.
+// Fills an Estate site with demo data, through the API, and checks the stock and
+// despatch rules along the way (each refused action must be refused). Prints a
+// PASS/FAIL list and the demo users' logins at the end.
 //
-//   node scripts/seed-demo.mjs --url https://estate.oneuptech.co --login mgr@estate.com
-//   node scripts/seed-demo.mjs --url http://localhost:8787 --login admin --password localpass123
+//   --size small (default): 2 godowns, 2 coffees, 2 clients, 5 users, 4 stock rows,
+//                           7 register entries, 4 despatches; 17 checks that add no data.
+//   --size full:            six months of data in 3 godowns; 28 checks.
+//
+//   node scripts/seed-demo.mjs --url https://estate-demo.oneuptech.co --login demo.admin
+//   node scripts/seed-demo.mjs --url http://localhost:8787 --login admin --password localpass123 --size full
 //
 // Needs an administrator login. Stock entries can never be deleted (only undone), so
 // run it on a site you are happy to fill with demo data. It refuses to run twice.
@@ -23,6 +27,11 @@ if (!url || !adminLogin) {
   process.exit(1);
 }
 const BASE = `${url}/api/v1`;
+const size = opt('size', 'small');
+if (!['small', 'full'].includes(size)) {
+  console.error('--size must be small or full');
+  process.exit(1);
+}
 
 async function ask(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -88,9 +97,117 @@ if ((await api(admin, 'GET', '/auth/me')).body.role !== 'admin') {
   process.exit(1);
 }
 const existing = await must('Read godowns', admin, 'GET', '/godowns');
-if (existing.godowns.some((g) => g.code.startsWith('DEMO-'))) {
-  console.error('Demo data is already on this site (godowns DEMO-…). Not adding it twice.');
+if (existing.godowns.some((g) => g.code.startsWith('DEMO-') || g.code.startsWith('YD'))) {
+  console.error('Demo data is already on this site. Not adding it twice.');
   process.exit(1);
+}
+
+async function createUsers(U) {
+  for (const u of Object.values(U)) {
+    const r = await api(admin, 'POST', '/users', u);
+    if (r.status === 409) { console.error(`\nThe login ${u.login} already exists. Remove the earlier demo users' logins first.`); process.exit(1); }
+    if (r.status !== 201) { console.error(`User ${u.login} failed: ${JSON.stringify(r.body)}`); process.exit(1); }
+    u.id = r.body.users.find((x) => x.login === u.login).id;
+  }
+}
+
+function finish(U, note) {
+  const failed = checks.filter((c) => !c.ok);
+  console.log(`\n${checks.length - failed.length} of ${checks.length} checks passed${failed.length ? ` — ${failed.length} FAILED` : ''}.`);
+  console.log('\nDemo users (change or disable them under Users when done):');
+  for (const u of Object.values(U)) console.log(`  ${u.login.padEnd(16)} ${u.password.padEnd(12)} ${u.role}${u.login === 'demo.left' ? ' (disabled)' : ''}`);
+  if (note) console.log(`\n${note}`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+if (size === 'small') await small();
+
+// Small set: just enough to see every page with something on it.
+async function small() {
+  console.log(`\nAdding demo data to ${url}\n\nMasters`);
+  const G = {};
+  for (const [k, code, name, address] of [['y1', 'YD1', 'Yard1', 'First Cross, Munnar'], ['y2', 'YD2', 'Yard2', '2nd Cross, Cochin']]) {
+    G[k] = (await must(`Godown ${name}`, admin, 'POST', '/godowns', { code, name, address })).id;
+  }
+  await refused('Duplicate godown code is refused', 409, admin, 'POST', '/godowns', { code: 'YD1', name: 'Copy' });
+  const I = {};
+  for (const [k, code, name, coffeeType, form, grade] of [
+    ['ara', 'ARA-PAB', 'Arabica Parchment AB', 'Arabica', 'Parchment', 'AB'],
+    ['rob', 'ROB-CAB', 'Robusta Cherry AB', 'Robusta', 'Cherry', 'AB']
+  ]) I[k] = (await must(`Coffee ${name}`, admin, 'POST', '/items', { code, name, coffeeType, form, grade, bagGrams: kg(50) })).id;
+  const C = {};
+  for (const [k, code, name, contactPerson, phone, address, gstin] of [
+    ['mx', 'MX', 'Malabar Exports', 'S. Nair', '98470 22222', 'Willingdon Island, Kochi 682003', '32AABCM5678L1Z2'],
+    ['hc', 'HC', 'Hassan Curing Works', 'R. Prakash', '98450 11111', 'KIADB Area, Hassan 573201', '29AAACH1234K1Z5']
+  ]) C[k] = (await must(`Client ${name}`, admin, 'POST', '/clients', { code, name, contactPerson, phone, address, gstin })).id;
+
+  console.log('\nUsers');
+  const U = {
+    manager: { login: 'demo.manager', name: 'Demo Manager', role: 'manager', password: pw(), godownIds: [] },
+    op1: { login: 'demo.op.yard1', name: 'Demo Operator (Yard1)', role: 'operator', password: pw(), godownIds: [G.y1] },
+    op2: { login: 'demo.op.yard2', name: 'Demo Operator (Yard2)', role: 'operator', password: pw(), godownIds: [G.y2] },
+    viewer: { login: 'demo.viewer', name: 'Demo Viewer', role: 'viewer', password: pw(), godownIds: [] },
+    left: { login: 'demo.left', name: 'Demo Former Staff', role: 'operator', password: pw(), godownIds: [G.y2] }
+  };
+  await createUsers(U);
+  const mgr = await login(U.manager.login, U.manager.password);
+  const op1 = await login(U.op1.login, U.op1.password);
+  const op2 = await login(U.op2.login, U.op2.password);
+  const viewer = await login(U.viewer.login, U.viewer.password);
+  await must('Disable former staff', admin, 'PATCH', `/users/${U.left.id}`, { active: false });
+  await refused('A disabled user cannot sign in', 401, null, 'POST', '/auth/password', { login: U.left.login, password: U.left.password });
+
+  // Stock register: 7 entries. Stock on hand: 4 godown + lot rows.
+  console.log('\nStock');
+  const L = {};
+  const inward = async (k, token, date, godown, item, bags, netKg, lot, extra) => {
+    L[k] = await must(`Inward ${k}`, token, 'POST', '/receipts', { date, locationId: godown, itemId: item, bags, grams: kg(netKg), lot, ...extra });
+  };
+  await inward('y1ara', admin, day(2, 3), G.y1, I.ara, 100, 5002, { cropYear: '2024-25', moisturePct: 10.6, outturnPct: 81 }, { opening: true, reference: 'Stock count' });
+  await inward('y2rob', admin, day(2, 3), G.y2, I.rob, 80, 4004, { cropYear: '2024-25', moisturePct: 11.2 }, { opening: true, reference: 'Stock count' });
+  await inward('y1rob', op1, day(1, 12), G.y1, I.rob, 60, 3010, { cropYear: '2025-26', moisturePct: 11.5, sourceRef: 'Valley Block' }, { reference: 'WB-1042' });
+  await inward('y2ara', op2, day(1, 20), G.y2, I.ara, 40, 2004, { cropYear: '2025-26', moisturePct: 10.8, outturnPct: 82, sourceRef: 'Hill Block A' }, { reference: 'WB-2107' });
+  await must('Adjustment', mgr, 'POST', '/adjustments', { date: day(1, 25), locationId: G.y1, lotId: L.y1ara.lotId, direction: 'OUT', grams: kg(2), bags: 0, reason: 'Sampling / quality draw', notes: 'Cup test for Malabar Exports' });
+
+  // Despatches: 2 despatched, 1 loading, 1 cancelled.
+  console.log('\nDespatches');
+  const draft = (token, client, date, godown, k, bags, netKg, extra) => must('Despatch', token, 'POST', '/dispatches', {
+    clientId: client, date, transporter: 'Sri Ganesh Transport', lines: [{ locationId: godown, lotId: L[k].lotId, bags, grams: kg(netKg) }], ...extra
+  });
+  const d1 = await draft(mgr, C.mx, day(1, 28), G.y1, 'y1ara', 30, 1500, { vehicleNo: 'KL 07 C 4410', driverName: 'Anil', driverPhone: '98470 70003', reference: 'MX/0533' });
+  await must('Truck left', mgr, 'POST', `/dispatches/${d1.id}/post`);
+  const d2 = await draft(op2, C.hc, todayIso, G.y2, 'y2rob', 25, 1251, { vehicleNo: 'KA 13 B 7788', driverName: 'Shivu', driverPhone: '98450 70002', reference: 'PO-2318' });
+  await must('Truck left', op2, 'POST', `/dispatches/${d2.id}/post`);
+  const loading = await draft(op1, C.hc, todayIso, G.y1, 'y1rob', 20, 1003, { vehicleNo: 'KA 18 A 1201', driverName: 'Manju', driverPhone: '98450 70001', reference: 'PO-2325' });
+  const cancelled = await draft(mgr, C.mx, todayIso, G.y2, 'y2ara', 10, 501, { vehicleNo: 'KL 07 C 4410' });
+  await must('Cancel', mgr, 'POST', `/dispatches/${cancelled.id}/cancel`, { reason: 'Client postponed the order' });
+
+  // Rules: every one of these must be refused, and adds nothing.
+  console.log('\nChecks');
+  await refused('Inward with a future date is refused', 422, admin, 'POST', '/receipts', { date: '2099-01-01', locationId: G.y1, itemId: I.ara, grams: kg(50), bags: 1 });
+  await refused('Viewer cannot record an inward', 403, viewer, 'POST', '/receipts', { date: todayIso, locationId: G.y1, itemId: I.ara, grams: kg(50), bags: 1 });
+  await refused('Operator cannot record an inward in another godown', 403, op1, 'POST', '/receipts', { date: todayIso, locationId: G.y2, itemId: I.ara, grams: kg(50), bags: 1 });
+  await refused('Transfer of more than is available is refused', 422, mgr, 'POST', '/transfers', { date: todayIso, fromLocationId: G.y2, toLocationId: G.y1, lotId: L.y2rob.lotId, grams: kg(99999), bags: 2000 });
+  await refused('Stock held for loading cannot be taken by another despatch', 422, mgr, 'POST', '/dispatches', { clientId: C.mx, date: todayIso, lines: [{ locationId: G.y1, lotId: L.y1rob.lotId, bags: 45, grams: kg(2250) }] });
+  await refused('Operator cannot despatch from another godown', 403, op1, 'POST', '/dispatches', { clientId: C.mx, date: todayIso, lines: [{ locationId: G.y2, lotId: L.y2ara.lotId, bags: 1, grams: kg(50) }] });
+  await refused('Operator cannot cancel a despatch loading in another godown', 403, op2, 'POST', `/dispatches/${loading.id}/cancel`, { reason: 'Not mine' });
+  await refused('Operator cannot make an adjustment', 403, op1, 'POST', '/adjustments', { date: todayIso, locationId: G.y1, lotId: L.y1ara.lotId, direction: 'OUT', grams: kg(1), bags: 0, reason: 'Sampling / quality draw' });
+  await refused('Adjustment "Other" without a note is refused', 422, mgr, 'POST', '/adjustments', { date: todayIso, locationId: G.y1, lotId: L.y1ara.lotId, direction: 'OUT', grams: kg(1), bags: 0, reason: 'Other' });
+  await refused('A despatch cannot be confirmed twice', 409, mgr, 'POST', `/dispatches/${d1.id}/post`);
+  await refused('Operator cannot undo a despatch', 403, op2, 'POST', `/dispatches/${d2.id}/reverse`, { reason: 'Test' });
+  await refused('An inward cannot be undone once its coffee was despatched', 422, mgr, 'POST', `/transactions/${L.y2rob.id}/reverse`, { reason: 'Test' });
+  const code = d1.packages[0].barcode;
+  const typo = code.slice(0, 6) + (code[6] === 'A' ? 'B' : 'A') + code.slice(7);
+  check('A mistyped barcode is reported as not valid', (await api(viewer, 'GET', `/trace/${typo}`)).body.validFormat === false);
+  const t = (await api(viewer, 'GET', `/trace/${code}`)).body;
+  check('Viewer can track a bag to its client and lot', t.found && t.client?.name === 'Malabar Exports' && t.lot?.code === L.y1ara.lotCode);
+  check('Viewer cannot open Users', (await api(viewer, 'GET', '/users')).status === 403);
+
+  const bal = (await must('Balances', admin, 'GET', '/stock/balances')).balances;
+  const tx = (await must('Register', admin, 'GET', '/transactions?limit=50')).transactions;
+  const ds = (await must('Despatches', admin, 'GET', '/dispatches')).dispatches;
+  console.log(`\nStock on hand: ${bal.length} rows · Stock register: ${tx.length} entries · Despatches: ${ds.length}`);
+  finish(U, 'Yard1: First Cross, Munnar · Yard2: 2nd Cross, Cochin');
 }
 
 console.log(`\nAdding demo data to ${url}\n\nMasters`);
@@ -126,12 +243,7 @@ const U = {
   viewer: { login: 'demo.viewer', name: 'Demo Viewer', role: 'viewer', password: pw(), godownIds: [] },
   left: { login: 'demo.left', name: 'Demo Former Staff', role: 'operator', password: pw(), godownIds: [G.curing] }
 };
-for (const u of Object.values(U)) {
-  const r = await api(admin, 'POST', '/users', u);
-  if (r.status === 409) { console.error(`\nThe login ${u.login} already exists. Remove the earlier demo users' logins first.`); process.exit(1); }
-  if (r.status !== 201) { console.error(`User ${u.login} failed: ${JSON.stringify(r.body)}`); process.exit(1); }
-  u.id = r.body.users.find((x) => x.login === u.login).id;
-}
+await createUsers(U);
 const mgr = await login(U.manager.login, U.manager.password);
 const opE = await login(U.opEstate.login, U.opEstate.password);
 const opT = await login(U.opTown.login, U.opTown.password);
@@ -282,9 +394,4 @@ const dash = await must('Dashboard', mgr, 'GET', '/dashboard');
 check('Dashboard trend has despatches in each of the last 6 months', dash.despatchTrend.filter((m) => m.bags > 0).length === 6, JSON.stringify(dash.despatchTrend));
 check('Viewer cannot open Users', (await api(viewer, 'GET', '/users')).status === 403);
 
-const failed = checks.filter((c) => !c.ok);
-console.log(`\n${checks.length - failed.length} of ${checks.length} checks passed${failed.length ? ` — ${failed.length} FAILED` : ''}.`);
-console.log('\nDemo users (change or disable them under Users when done):');
-for (const u of Object.values(U)) console.log(`  ${u.login.padEnd(16)} ${u.password.padEnd(12)} ${u.role}${u.login === 'demo.left' ? ' (disabled)' : ''}`);
-console.log('\nEverything demo is named "(demo)" and coded DEMO-…');
-process.exit(failed.length ? 1 : 0);
+finish(U, 'Everything demo is named "(demo)" and coded DEMO-…');

@@ -154,14 +154,14 @@ npm run typecheck
 
 ## Demo data and rule checks
 
-`scripts/seed-demo.mjs` fills a site with six months of demo data through the API, as real users would, and checks every rule on the way: 28 checks such as no overdrawing, stock held for loading, bag weights adding up, undo only once, operator godown limits, viewer read-only, disabled users, mistyped barcodes and simultaneous transfers. It prints PASS/FAIL for each check, and the demo users' logins.
+`scripts/seed-demo.mjs` fills a site with demo data through the API, as real users would, and checks the rules on the way. The default `--size small` adds 2 godowns (Yard1, Munnar; Yard2, Cochin), 2 coffees, 2 clients and 5 users, giving 4 stock rows, 7 register entries and 4 despatches (2 despatched, 1 loading, 1 cancelled), plus 17 checks that add no data. `--size full` adds six months of data in 3 godowns with 28 checks such as no overdrawing, stock held for loading, bag weights adding up, undo only once, operator godown limits, viewer read-only, disabled users, mistyped barcodes and simultaneous transfers. It prints PASS/FAIL for each check, and the demo users' logins.
 
 ```bash
 npm run seed:demo -- --url https://estate.oneuptech.co --login <admin login>   # asks for the password
 npm run seed:demo -- --url http://localhost:8787 --login admin --password localpass123
 ```
 
-Everything it adds is named "(demo)" and coded `DEMO-…`, and it refuses to run twice. Stock entries can't be deleted, only undone, so run it on the **demo site** below, not the live one.
+It refuses to run twice. Stock entries can't be deleted, only undone, so run it on the **demo site** below, not the live one.
 
 ## Demo site (estate-demo.oneuptech.co)
 
@@ -180,7 +180,7 @@ That creates the database (and saves its ID in `wrangler.jsonc`), creates the ta
 
 After code changes, update the demo site with `npm run demo:deploy` (the live site still uses `npm run deploy`). Demo users: `npm run user:list:remote -- --env demo --db estate-demo-db`; reset a password with `npm run user:reset:remote -- --env demo --db estate-demo-db --login <login>`.
 
-To empty the demo site and start again: `npx wrangler d1 delete estate-demo-db`, remove its `database_id` line from `wrangler.jsonc`, and run `npm run demo:setup` again.
+To empty the demo site and fill it again: `npm run demo:setup -- --reset` (asks you to type the database name; deletes everything there, users too), then commit the new `database_id` in `wrangler.jsonc`. Add `--size full` for the larger data set.
 
 ## Starting again with an empty database
 
