@@ -2,13 +2,28 @@
   "name": "estate-phase1",
   "private": true,
   "version": "1.0.0",
-  "description": "Coffee stock and distribution: godown stock, client dispatch and package barcodes",
+  "type": "module",
+  "description": "OneUpTech Estate — coffee stock, client dispatch and package barcodes",
   "scripts": {
-    "test": "node --test tests/*.test.js",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler d1 migrations apply estate-db --remote && wrangler deploy",
+    "typecheck": "tsc",
+    "test": "node --test tests/*.test.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply estate-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply estate-db --remote",
+    "user:create:local": "node scripts/create-user.mjs --local",
+    "user:create:remote": "node scripts/create-user.mjs --remote"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.7",
+    "hono": "^4.13.12",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "wrangler": "^4.40.0"
+    "@cloudflare/workers-types": "^5.20261002.1",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.146.0"
   }
 }

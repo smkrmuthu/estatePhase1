@@ -3,55 +3,106 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Coffee Stock & Distribution</title>
+  <title>OneUpTech Estate</title>
+  <meta name="description" content="OneUpTech Estate — coffee stock in godowns, dispatch to clients, package barcodes." />
+  <meta name="theme-color" content="#171b38" />
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estate.css?v=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/estate.css?v=2" />
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#/">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32"><ellipse cx="16" cy="16" rx="10" ry="14" transform="rotate(30 16 16)" fill="currentColor"/><path d="M10 6c6 6 6 14 12 20" stroke="#fbf7f0" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-      </span>
-      <span class="brand-text">
-        <span class="brand-title" id="orgName">Coffee Stock</span>
-        <span class="brand-sub">Godown stock &amp; distribution · Phase 1</span>
-      </span>
-    </a>
-    <form class="scan-box" id="scanForm" autocomplete="off">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14M6 5v14M9 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke="currentColor" stroke-width="1.6"/></svg>
-      <input id="scanInput" type="text" placeholder="Scan or type package barcode…" aria-label="Scan or type package barcode" />
-    </form>
-    <button class="menu-toggle" id="menuToggle" aria-label="Menu" aria-expanded="false">☰</button>
-  </header>
+  <!-- Logo mark, defined once and reused (header, sign-in). "1" navy, "U" blue→teal, coffee bean. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="uGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#1c7fd4" />
+        <stop offset="1" stop-color="#13a196" />
+      </linearGradient>
+      <symbol id="mark1u" viewBox="0 0 60 48">
+        <path class="mark-one" d="M4 14 L15 6 H23 V42 H14 V17 L4 22 Z" />
+        <path fill="url(#uGrad)" d="M27 6 H36 V29 a6.5 6.5 0 0 0 13 0 V6 H58 V29 a15.5 15.5 0 0 1 -31 0 Z" />
+      </symbol>
+      <symbol id="bean" viewBox="0 0 32 44">
+        <ellipse cx="16" cy="22" rx="13" ry="19" transform="rotate(14 16 22)" fill="#7d551f" />
+        <path d="M18.5 4.5 C 10 13, 22 27, 13.5 39.5" stroke="#fbf3e0" stroke-width="2.6" fill="none" stroke-linecap="round" />
+      </symbol>
+    </defs>
+  </svg>
 
-  <div class="layout">
-    <nav class="sidenav" id="sidenav" aria-label="Main">
-      <a href="#/" data-nav="dashboard">Dashboard</a>
-      <div class="nav-group">Stock</div>
-      <a href="#/stock" data-nav="stock">Stock on hand</a>
-      <a href="#/receive" data-nav="receive">Receive stock</a>
-      <a href="#/transfer" data-nav="transfer">Transfer</a>
-      <a href="#/adjust" data-nav="adjust">Adjustment</a>
-      <a href="#/ledger" data-nav="ledger">Stock ledger</a>
-      <div class="nav-group">Distribution</div>
-      <a href="#/dispatch/new" data-nav="dispatch-new">New dispatch</a>
-      <a href="#/dispatches" data-nav="dispatches">Dispatches</a>
-      <a href="#/track" data-nav="track">Track barcode</a>
-      <div class="nav-group">Setup</div>
-      <a href="#/masters/godowns" data-nav="masters">Masters</a>
-      <a href="#/settings" data-nav="settings">Settings &amp; backup</a>
-    </nav>
-    <main id="view" class="view" tabindex="-1"></main>
+  <!-- Sign-in -->
+  <div id="loginScreen" class="login-screen" hidden>
+    <div class="login-card">
+      <div class="logo-lockup">
+        <div class="logo-marks"><svg class="m1u"><use href="#mark1u" /></svg><svg class="mbean"><use href="#bean" /></svg></div>
+        <div class="logo-words"><span class="w-oneup">OneUpTech</span><span class="w-estate">Estate</span></div>
+      </div>
+      <div class="tagline">GROW MORE.<br>MANAGE BETTER.</div>
+      <div class="gold-rule"></div>
+      <form id="loginForm" class="login-form" autocomplete="on">
+        <label>Login<input name="login" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <div id="loginError" class="form-error" role="alert"></div>
+        <button class="btn primary block" type="submit">Sign in</button>
+      </form>
+      <p class="login-foot">Coffee stock &amp; distribution</p>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="appShell" hidden>
+    <header class="topbar">
+      <a class="brand" href="#/" aria-label="OneUpTech Estate home">
+        <span class="brand-marks"><svg class="m1u"><use href="#mark1u" /></svg><svg class="mbean"><use href="#bean" /></svg></span>
+        <span class="brand-text">
+          <span class="brand-title"><span class="w-oneup">OneUpTech</span> <span class="w-estate">Estate</span></span>
+          <span class="brand-sub" id="orgName"></span>
+        </span>
+      </a>
+      <form class="scan-box" id="scanForm" autocomplete="off">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14M6 5v14M9 5v14M13 5v14M15 5v14M18 5v14M21 5v14" stroke="currentColor" stroke-width="1.6"/></svg>
+        <input id="scanInput" type="text" placeholder="Scan or type package barcode…" aria-label="Scan or type package barcode" />
+      </form>
+      <div class="user-menu">
+        <button class="user-btn" id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"><span class="avatar" id="userAvatar"></span><span class="user-name" id="userName"></span></button>
+        <div class="user-pop" id="userPop" hidden>
+          <div class="user-role" id="userRole"></div>
+          <a href="#/settings">Settings &amp; password</a>
+          <button id="signOut" type="button">Sign out</button>
+        </div>
+      </div>
+      <button class="menu-toggle" id="menuToggle" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+    </header>
+
+    <div class="layout">
+      <nav class="sidenav" id="sidenav" aria-label="Main">
+        <a href="#/" data-nav="dashboard">Dashboard</a>
+        <div class="nav-group">Stock</div>
+        <a href="#/stock" data-nav="stock">Stock on hand</a>
+        <a href="#/receive" data-nav="receive" data-can="post">Receive stock</a>
+        <a href="#/transfer" data-nav="transfer" data-can="post">Transfer</a>
+        <a href="#/adjust" data-nav="adjust" data-can="manage">Adjustment</a>
+        <a href="#/ledger" data-nav="ledger">Stock ledger</a>
+        <div class="nav-group">Distribution</div>
+        <a href="#/dispatch/new" data-nav="dispatch-new" data-can="post">New dispatch</a>
+        <a href="#/dispatches" data-nav="dispatches">Dispatches</a>
+        <a href="#/track" data-nav="track">Track barcode</a>
+        <div class="nav-group">Setup</div>
+        <a href="#/masters/godowns" data-nav="masters">Masters</a>
+        <a href="#/users" data-nav="users" data-can="admin">Users</a>
+        <a href="#/settings" data-nav="settings">Settings</a>
+        <div class="nav-foot">Powered by OneUpTech</div>
+      </nav>
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="printRoot" class="print-root"></div>
 
-  <script src="js/code128.js?v=1"></script>
-  <script src="js/store.js?v=1"></script>
-  <script src="js/app.js?v=1"></script>
+  <script src="js/code128.js?v=2"></script>
+  <script src="js/api.js?v=2"></script>
+  <script src="js/app.js?v=2"></script>
 </body>
 </html>

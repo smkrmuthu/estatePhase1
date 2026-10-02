@@ -1,111 +1,151 @@
-# Coffee Stock & Distribution — Phase 1
+# OneUpTech Estate — Phase 1
 
-Estate app for coffee held in godowns and dispatched to clients. Every package sent out gets its own barcode, printed with the dispatch details, so it can be traced later.
+**Grow more. Manage better.** Coffee stock held in godowns, distributed to clients, with a barcode on every package that carries the dispatch details for tracking.
 
-Live at **https://estate.oneuptech.co** (Cloudflare), once connected as described under *Hosting*.
+Live at **https://estate.oneuptech.co** once set up (see *Hosting*).
 
-## Phase 1 goals and where they are met
+## What Phase 1 does
 
 | Goal | How |
 |---|---|
-| Maintain coffee stock in godowns | Receive, transfer, adjust (with reason codes) and an opening balance. **Stock on hand** shows each godown and lot in kg and bags, with what drafts hold and what is available. Every movement is in the **Stock ledger**. |
-| Distribute to clients | **New dispatch**: client, vehicle, driver, destination and lines (godown + lot + bags + kg). A draft holds the stock; **Post dispatch** deducts it. |
-| Barcodes when delivering | Saving a dispatch issues one Code 128 barcode per package (normally one per bag). Labels print at 100 × 75 mm by default (adjustable). |
-| Barcode delivered with dispatch details | Each label carries client, address, dispatch no., date, vehicle, coffee, lot, net weight and *package n of N*. The A4 **dispatch note** lists every package barcode for the driver and consignee. Scanning any label (top search bar or **Track barcode**) shows the full trace. |
-| Tables/fields added only when required | Only the fields needed now (see *Data model*). `store.js` explains how to add a field or reshape data safely. |
-| Ready for sourcing / cultivation / fermentation later | See *Extending to earlier steps*. |
+| Maintain coffee stock in godowns | Receive (incl. opening balance), transfer between godowns, adjust with a reason code. **Stock on hand** shows each godown + lot in kg and bags, with what drafts hold and what is available. Every movement is in the **Stock ledger**. |
+| Distribute to clients | **New dispatch**: client, vehicle, driver, destination, and lines (godown + lot + bags + kg). Saving a draft holds the stock; **Post dispatch** deducts it. |
+| Barcodes when delivering | Each package (normally one per bag) gets a Code 128 barcode when the draft is saved, so labels go on before loading. |
+| Barcode delivered with dispatch details | Labels show client, address, dispatch no., date, vehicle, coffee, lot, net weight and *package n of N*. The A4 **dispatch note** lists every package barcode. Scanning a label shows the full trace. |
+| Multi-user | Sign-in, four roles, godown-level access for operators, audit trail. |
+| Tables/fields only as needed; ready for earlier steps | See *Data model* and *Extending to earlier steps*. |
 
-## Project layout
+## Stack
+
+Same family as FleetApp: **Cloudflare Workers + D1 (SQLite) + Hono + Drizzle (schema & migrations) + zod**, JWT sign-in with PBKDF2 password hashing.
+
+Unlike FleetApp, the web app and the API are **one Worker on one domain**: Cloudflare serves the files in `public/` directly, and only `/api/*` runs Worker code. That means one deploy, no CORS setup, and no API URL to configure.
 
 ```
-public/          the app (plain HTML/CSS/JS, no build step) — this folder is what gets hosted
-  index.html
-  js/store.js    stock, dispatch and barcode rules
-  js/app.js      screens, printing
-  js/code128.js  barcode encoder
-  _headers       security headers for Cloudflare
-tests/           Node tests for store.js and the barcode encoder
-db/              target multi-user database schema + its tests
-wrangler.jsonc   Cloudflare config (Worker "estate", domain estate.oneuptech.co)
+public/            the web app (plain HTML/CSS/JS, no build step)
+  js/app.js        screens, printing
+  js/api.js        API client (token, errors)
+  js/code128.js    barcode encoder
+src/               the API (Hono)
+  routes/          auth, org, users, masters, stock, dispatches (+ trace, dashboard, CSV)
+  lib/stock.ts     balances, availability check, posting
+  lib/barcode.ts   barcode values with check character
+drizzle/schema.ts  database schema (source of truth)
+migrations/        0000 tables (generated) · 0001 stock-rule triggers (hand-written)
+scripts/create-user.mjs   create the first admin (or any user) from the command line
+tests/             API integration tests (real Worker + local D1) and barcode tests
+wrangler.jsonc     Worker "estate", D1 "estate-db", domain estate.oneuptech.co
 ```
 
-## Running locally
+## Roles
 
-```bash
-npx wrangler dev          # http://localhost:8787 — same server Cloudflare uses
-# or any static server:  python3 -m http.server 4173 --directory public
-```
+| Role | Can |
+|---|---|
+| Administrator | Everything, plus users and organisation settings |
+| Manager | Masters, all stock postings, adjustments, reversals |
+| Godown operator | Receive, transfer and dispatch — only in godowns assigned to them |
+| Viewer | Read only |
 
-To explore quickly: **Settings & backup → Load demo data**.
+The API enforces these on every request (the screens just hide what you can't do). Disabling a user or changing their role takes effect on their next click.
 
-Tests:
+## How stock stays correct
 
-```bash
-npm test                                                             # stock rules, barcodes
-psql -v ON_ERROR_STOP=1 -d <empty db> -f db/schema.sql -f db/test_schema.sql
-```
+- **Ledger first.** Every receipt, transfer, adjustment, dispatch and reversal writes signed ledger rows (grams + bags). Balances are always computed from the ledger.
+- **All-or-nothing postings.** Each posting is one D1 batch: either everything is saved or nothing is.
+- **Rules inside the database** (`migrations/0001_stock_rules.sql`), so they hold even when two people post at the same second:
+  - a godown + lot can never go below zero, or below what draft dispatches hold;
+  - ledger rows and posted transactions can't be edited or deleted — mistakes are **reversed** with an opposite entry, once;
+  - a dispatch can be posted only once, and only if its package weights add up exactly to its lines;
+  - package barcodes can never change or be deleted, and are never reused.
+- **Whole grams.** Quantities are integers (grams), never floating point.
+
+## Dispatch & barcode rules
+
+1. **Save draft & issue barcodes** — stock is held; one package per bag with a barcode like `PKG-6ERM2G1WMXC`.
+2. **Weigh (optional)** — enter actual net kg per package; totals must equal the line before posting.
+3. **Post dispatch** when the vehicle leaves — stock is deducted, packages become *DISPATCHED*.
+4. Editing a draft's lines retires old barcodes and issues new ones. A retired barcode still scans and shows it was retired.
+5. **Reverse** (managers) only if the goods did not leave. Returned goods are a later feature.
+
+Barcodes use Crockford Base32 (no I/L/O/U) plus a check character, so a mistyped code is rejected instead of matching another package. Any USB/Bluetooth scanner that types like a keyboard works in the top search bar on every screen.
 
 ## Hosting (Cloudflare, same account as fleet.oneuptech.co)
 
-The app is a static-assets Cloudflare Worker named `estate`; `wrangler.jsonc` serves `public/` and claims the custom domain `estate.oneuptech.co`.
+One-time setup, from a laptop with Node 20+:
 
-One-time setup in the Cloudflare dashboard:
+```bash
+git clone https://github.com/smkrmuthu/estatePhase1 && cd estatePhase1
+npm install
+npx wrangler login
 
-1. **Workers & Pages → Create application → Import a repository** (Workers tab, not Pages) → pick `smkrmuthu/estatePhase1`.
-2. Project name `estate`. Build command: *(leave empty)*. Deploy command: `npx wrangler deploy` (the default). Root directory: `/`.
-3. Save and deploy. Every push to `main` then redeploys automatically.
-4. The custom domain `estate.oneuptech.co` is attached on deploy (from `wrangler.jsonc`), because the `oneuptech.co` zone is already on this account. If the deploy reports the domain is in use, remove it from wherever it is attached, or add it under the Worker's **Settings → Domains & Routes**.
+# 1. Create the database, then paste the printed database_id into wrangler.jsonc
+npx wrangler d1 create estate-db
 
-Manual deploy from a laptop instead: `npx wrangler login`, then `npm run deploy`.
+# 2. Create the tables and stock rules
+npm run db:migrate:remote
 
-## Important: where data is stored in this build
+# 3. Set the sign-in secret (paste a long random string, e.g. from: openssl rand -hex 32)
+npx wrangler secret put JWT_SECRET
 
-Phase 1 keeps data **in the browser on the device you use** (localStorage). That is fine for a pilot on one godown PC. It is **not** shared between devices or users yet. Use **Settings → Export backup** regularly.
+# 4. Create the first administrator (prompts for a password)
+npm run user:create:remote -- --org "Your Estate Name" --login you@example.com --name "Your Name" --role admin
 
-`db/schema.sql` is the shared, multi-user version of the same model (written and tested for PostgreSQL), with the same rules enforced inside the database and tested by `db/test_schema.sql`. Next increment: a shared backend with logins and per-godown access. To match FleetApp, that would be a Cloudflare Worker API + D1 database, with this schema carried over as D1 migrations.
+# 5. Deploy (applies any new migrations, then deploys the Worker + app)
+npm run deploy
+```
 
-## How stock works
+Commit the `database_id` change from step 1. The domain `estate.oneuptech.co` is attached automatically on deploy, because the `oneuptech.co` zone is already on this account. If Cloudflare says the domain is in use, remove it from wherever it's attached, or add it under the Worker's **Settings → Domains & Routes**.
 
-- **Ledger first.** Every receipt, transfer, adjustment, dispatch and reversal writes signed ledger rows (grams + bags). Balances are always computed from the ledger, so they can't drift.
-- **Nothing posted is edited.** Mistakes are corrected with **Reverse**, which posts the opposite movement and keeps both records.
-- **No negative stock.** A posting that would take a godown + lot below zero, or below what draft dispatches hold, is refused and nothing is saved.
-- **Whole grams.** Quantities are stored as integer grams to avoid rounding drift; screens show kg.
+**Automatic deploys (optional):** in the Cloudflare dashboard, **Workers & Pages → estate → Settings → Build**, connect `smkrmuthu/estatePhase1`, branch `main`, deploy command `npm run deploy`. Every push to `main` then migrates and deploys. If the build token can't run D1 migrations, use `npx wrangler deploy` as the deploy command and run `npm run db:migrate:remote` by hand when a migration is added.
 
-## Dispatch and barcode rules
+After that, add the rest of the team under **Users** in the app.
 
-1. **Save draft & issue barcodes.** Stock is held and one package per bag is created, each with a barcode like `PKG-D6E66YT2W18`. The barcodes exist before loading, so labels can be printed and stuck on the bags.
-2. **Weigh (optional).** Enter the actual net kg per package. Package totals must equal the line totals exactly before posting.
-3. **Post dispatch** when the vehicle leaves: stock is deducted and packages become *DISPATCHED*.
-4. Changing a draft's lines retires its old barcodes and issues new ones. **A barcode is never reused.** A retired barcode still resolves and shows that it is retired.
-5. **Reverse** a posted dispatch only if the goods did not leave. Goods physically coming back (returns) are a later feature.
+## Local development
 
-Barcode values use Crockford Base32 (no I/L/O/U) plus a check character, so a mistyped code is rejected rather than matching a different package. The encoder was checked against `python-barcode` bit for bit, and printed labels and dispatch notes were decoded with a barcode reader during testing.
+```bash
+npm install
+cp .dev.vars.example .dev.vars            # local-only JWT secret
+npm run db:migrate:local
+npm run user:create:local -- --login admin --name "Admin" --password localpass123
+npm run dev                               # http://localhost:8787
+```
 
-Scanners: any USB/Bluetooth scanner that types like a keyboard works in the top bar from any screen.
+```bash
+npm test          # API integration tests (starts its own Worker + throwaway D1) + barcode tests
+npm run typecheck
+```
+
+## Changing the database
+
+1. Edit `drizzle/schema.ts`.
+2. `npm run db:generate` — writes a new `migrations/000N_*.sql`. Review it.
+3. `npm run db:migrate:local` and `npm test`.
+4. Push; `npm run deploy` applies it to production.
+
+Triggers and other SQL that Drizzle can't express go in a custom migration (`npx drizzle-kit generate --custom --name <what>`).
 
 ## Data model (Phase 1)
 
-| Record | Key fields |
+| Table | Key fields |
 |---|---|
-| Godown | code, name, address, active |
-| Coffee item | code, name, coffee type (Arabica/Robusta), form (Parchment/Cherry/Clean), grade, standard bag kg |
-| Client | code, name, contact, phone, delivery address, GSTIN |
-| Lot | code, item, **source type + source ref**, crop year, moisture %, outturn % |
-| Transaction | no., type (OPENING, RECEIPT, TRANSFER, ADJUSTMENT, DISPATCH, REVERSAL), status, date, reference, reason |
-| Ledger row | transaction, godown, lot, ± grams, ± bags |
-| Dispatch | no., client, date, destination, vehicle, transporter, driver, status (DRAFT → DISPATCHED / CANCELLED / REVERSED), lines |
-| Package | dispatch, line, seq, **barcode**, grams, bags, status (PREPARED → DISPATCHED / CANCELLED), print count |
-| Audit event | who, when, what |
+| orgs | name, address, label size |
+| users, user_godowns | login, name, role, password hash; godowns an operator may post in |
+| locations | godowns today (`kind`, `parent_id` leave room for stacks/bays or estates/blocks) |
+| items | code, name, coffee type, form (Parchment/Cherry/Clean), grade, standard bag weight |
+| clients | code, name, contact, phone, delivery address, GSTIN |
+| lots | code, item, **source_type + source_id + source_ref**, crop year, moisture %, outturn % |
+| stock_txns / stock_ledger | posted transactions and their signed ledger rows (grams, bags) |
+| dispatches / dispatch_lines / dispatch_packages | header, lines, packages with barcodes |
+| counters | document numbers (RCV-2026-00001, DSP-…, LOT-…) |
+| audit_log | who did what, when (append-only) |
 
 ## Extending to earlier steps (sourcing, cultivation, fermentation, processing)
 
-The design leaves room for these without changing anything already built:
-
-- **Lots record where they came from.** Today every lot is `sourceType: RECEIPT`. A sourcing or harvest module adds its own records and creates lots with `sourceType: HARVEST` / `PURCHASE` pointing at them.
-- **Processing becomes a new transaction type.** For example, hulling parchment into clean coffee consumes input lots and creates output lots. A `lot_link` table records parent → child, so a package barcode can trace back through processing to the estate block.
-- **Locations are hierarchical** (`location.parent_id`, `kind`), so estates, divisions and blocks can sit alongside godowns.
+- **Lots record where they came from.** Today every lot is `source_type = RECEIPT`. A sourcing or harvest module adds its own tables and creates lots with `source_type` HARVEST / PURCHASE / PROCESSING and `source_id` pointing at them.
+- **Processing is a new transaction type.** For example, hulling parchment into clean coffee consumes input lots and creates output lots; a `lot_links` table records parent → child. A package barcode can then trace back through processing to the estate block.
+- **Locations are hierarchical**, so estates, divisions and blocks can sit alongside godowns.
 - **The barcode stays the anchor.** Labels can later show provenance, but the encoded value stays an opaque ID, so old labels keep working.
 
-## Not in Phase 1 (deliberately)
+## Not in Phase 1
 
-Sourcing/purchasing, cultivation, fermentation/processing, quality lab, invoicing/payments, returns of goods, transport integration, a customer portal, file attachments, user logins/roles (comes with the shared database), and offline sync across devices.
+Sourcing/purchasing, cultivation, fermentation/processing, quality lab, invoicing/payments, returns of goods, physical stock counts, transport integration, a customer portal, file attachments, offline use.
