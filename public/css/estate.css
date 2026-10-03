@@ -110,8 +110,11 @@ h1 .mono, h1.mono { font-family: var(--mono); font-size: 22px; font-weight: 600;
 
 /* ---------- sign-in: estate scene on the left, sign-in card on the right ---------- */
 .login-screen { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 55fr) minmax(0, 45fr); background: var(--bg); overflow-x: hidden; }
-.login-art { position: relative; overflow: hidden; background: #3f6e3e; }
-.login-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
+.login-art { position: relative; overflow: hidden; background: #3f6e3e url(../img/estate-art.svg) center bottom / cover no-repeat; }
+.login-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 40% center; }
+/* Darker towards the bottom so the white tagline stays readable on the photo. */
+.login-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20, 12, 4, 0) 30%, rgba(20, 12, 4, .55) 62%, rgba(20, 12, 4, .85) 100%); }
+.art-caption { z-index: 1; }
 .art-caption { position: absolute; left: clamp(24px, 5vw, 64px); right: 24px; bottom: clamp(28px, 6vh, 64px); color: #fffaf1; text-shadow: 0 1px 12px rgba(20, 12, 4, .45); }
 .art-tag { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 3.6vw, 52px); line-height: 1.04; letter-spacing: .01em; }
 .art-tag::after { content: ""; display: block; width: 72px; height: 4px; border-radius: 2px; background: var(--gold-500); margin-top: 18px; }

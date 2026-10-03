@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/estate.css?v=8" />
+  <link rel="stylesheet" href="css/estate.css?v=9" />
 </head>
 <body>
   <!-- Logo mark, defined once and reused (header, sign-in). "1" navy, "U" blue→teal, coffee bean. -->
@@ -33,9 +33,10 @@
 
   <!-- Sign-in -->
   <div id="loginScreen" class="login-screen" hidden>
-    <!-- Drawn coffee-estate scene (hills, silver-oak shade trees, rows of coffee); decorative. -->
+    <!-- Coffee-estate photo (img/estate-photo.webp; swap the file to change it). The drawn
+         scene (img/estate-art.svg) shows behind it while the photo loads. Decorative. -->
     <div class="login-art" aria-hidden="true">
-      <img src="img/estate-art.svg" alt="" decoding="async" fetchpriority="high">
+      <img src="img/estate-photo.webp" alt="" decoding="async" fetchpriority="high">
       <div class="art-caption">
         <div class="art-tag">GROW MORE.<br>MANAGE BETTER.</div>
         <div class="art-sub">From cherry to cargo — every step, every bag.</div>
