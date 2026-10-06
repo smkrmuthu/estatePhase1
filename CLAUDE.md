@@ -33,7 +33,7 @@ If the user says "not working" after a deploy, check in this order:
 4. Is the browser showing a cached copy?
 
 ## Git
-- Work on `main` unless told otherwise. Pull before work and **fetch + rebase before push**: the owner commits from their laptop too, for example database IDs in `wrangler.jsonc`.
+- Changes go through a branch and pull request (see Code review below); small doc-only fixes may go straight to `main` if the owner says so. Pull before work and **fetch + rebase before push**: the owner commits from their laptop too, for example database IDs in `wrangler.jsonc`.
 - Never use a `git rebase … || git stash` pattern: if the rebase fails, the stash hides your changes.
 - Small commits, plain-English messages that say what changed for users.
 - Never commit secrets. `JWT_SECRET` is set with `wrangler secret put`. If a secret appears in a screenshot or chat, tell the owner to replace it.
@@ -45,9 +45,54 @@ If the user says "not working" after a deploy, check in this order:
 - Every role check happens on the server. The UI only hides what a role can't do.
 - Never run demo or seed data against a live database. Demo data goes to the demo site only.
 
+## Test cases (write them with every change)
+Every feature or fix ships with tests. Cover the normal path **and both extremes**, so the test shows where the rule starts and stops working.
+
+- **Normal path:** the everyday case works end to end, for example inward 20 bags, then despatch 5.
+- **Lower extreme:** zero, empty, the minimum allowed, and one below it. For example 0 bags with 0 kg is refused; 1 gram is accepted; a missing required field is refused with a clear message.
+- **Upper extreme:** exactly the maximum allowed, and one above it. For example despatching all available stock is accepted, but 1 gram more is refused; long text at its length limit; the largest page size.
+- **Wrong input:** bad formats, future dates, unknown IDs, duplicates, and a mistyped barcode.
+- **Wrong person:** every role the action is *not* allowed for gets refused (403), and the allowed roles succeed. Operators are refused outside their godowns. A disabled user is refused immediately.
+- **State rules:** an action at the wrong stage is refused (409/422). Examples: posting twice, undoing twice, printing labels after Truck left, editing something recorded.
+- **Concurrency:** when two people can act at once, fire the requests in parallel and assert the database lets exactly one through. Never let stock go below zero.
+- **Database rules:** direct SQL that breaks a rule (UPDATE or DELETE on the ledger, changing a barcode) must fail. Keep these tests last, because they reload the local Worker.
+
+Keep tests scalable, so future phases (harvest, fermentation, sorting, …) can add to them without rewriting:
+- **One `test()` per rule or feature**, named for the behaviour, for example `'transfer refuses to overdraw'`.
+- **Shared helpers** (`api()`, `login()`, balance lookups) at the top of the file, and shared IDs in one object.
+- **Each test sets up its own data**, or builds clearly on data created earlier in the file.
+- **No real dates or IDs hard-coded:** compute dates from today and read IDs from responses.
+- **A new module gets its own test file**, for example `tests/harvest.test.mjs`, using the same helpers. `npm test` runs every `tests/*.test.mjs`.
+- **The demo seed script** (`scripts/seed-demo.mjs`) doubles as an end-to-end check on a real site. When a new rule is added, add its refused case there too.
+
+## Code review (every change goes through a pull request)
+1. **Branch and PR.** Work on a branch named for the change, for example `feature/scan-to-load` or `fix/transfer-same-godown`. Open a pull request to `main` with:
+   - what changed, for users;
+   - why;
+   - how it was tested (commands run and their results);
+   - screenshots for UI changes;
+   - anything not verified.
+2. **Review before merge.** Review the PR diff as a separate step, as if someone else wrote it, checking:
+   - **Correctness:** logic errors, edge cases from the test list above, error messages.
+   - **Data safety:** rules held in the database, no float quantities, append-only history kept, migrations reviewed.
+   - **Security:** role checks on the server, input validated with zod, no secrets in code, no SQL built from user text.
+   - **Tests:** new behaviour and both extremes covered; `npm run typecheck` and `npm test` pass.
+   - **UI:** works at 320px and desktop, uses domain wording, quantities bags first, `?v=N` bumped.
+   - **Docs:** README, CLAUDE.md and user guides updated where users see a change.
+3. **Record the review on GitHub.**
+   - Post each finding as a PR review comment on the exact line, with its severity (**blocker**, **should fix** or **nit**) and the suggested fix.
+   - A finding that is out of scope for this PR becomes a **GitHub issue**, labelled (`bug`, `enhancement`, `tech-debt`) and linked from the PR comment.
+   - Never leave a finding only in chat.
+4. **Fix, then re-check.** Push fixes to the same PR, reply on each comment with what changed (or why not), and resolve it. Merge only when:
+   - CI and tests are green;
+   - no blocker comments are open;
+   - the owner has approved.
+5. **After merge:** the owner deploys (demo first, then live). Close the issues the PR fixed, with "Fixes #N" in the PR description.
+
 ## Before you say "done"
-- `npm run typecheck` and `npm test` must pass. Add or extend a test for any rule you change.
+- `npm run typecheck` and `npm test` must pass, including the new tests above.
 - For UI changes, run the app locally (`wrangler dev`) and check it in a browser at desktop (1366px) and phone (320–440px) widths with Playwright. The page must never be wider than the screen.
+- The PR has its review comments posted, and any follow-ups filed as issues.
 - Report what you verified and what you could not, for example "deploy not run from here".
 
 ## Sandbox gotchas (Claude Code cloud sessions)
