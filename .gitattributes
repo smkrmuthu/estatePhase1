@@ -1,0 +1,6 @@
+# Keep LF line endings on every OS (Windows checkouts otherwise get CRLF).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.woff2 binary

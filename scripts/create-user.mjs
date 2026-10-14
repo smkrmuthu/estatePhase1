@@ -12,12 +12,12 @@
 //
 // Passwords are prompted for when --password is not given, and are hashed here
 // (PBKDF2, same as the Worker) — they never go to Cloudflare in plain text.
-import { execFileSync } from 'node:child_process';
 import { webcrypto as crypto, randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { wranglerSync } from './wrangler.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
@@ -37,11 +37,11 @@ const persist = opt('persist-to');
 const envName = opt('env');
 const dbName = opt('db', 'estate-db');
 
-const wranglerArgs = (extra) => ['wrangler', 'd1', 'execute', dbName, target, ...extra, ...(persist ? ['--persist-to', persist] : []), ...(envName ? ['--env', envName] : [])];
+const wranglerArgs = (extra) => ['d1', 'execute', dbName, target, ...extra, ...(persist ? ['--persist-to', persist] : []), ...(envName ? ['--env', envName] : [])];
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
 function query(sql) {
-  const out = execFileSync('npx', wranglerArgs(['--command', sql, '--json']), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  const out = wranglerSync(wranglerArgs(['--command', sql, '--json']), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
   return JSON.parse(out.slice(out.indexOf('[')))[0].results;
 }
 
@@ -50,7 +50,7 @@ function runFile(sql) {
   const file = join(dir, 'user.sql');
   writeFileSync(file, sql);
   try {
-    execFileSync('npx', wranglerArgs([`--file=${file}`, '--yes']), { stdio: 'inherit' });
+    wranglerSync(wranglerArgs([`--file=${file}`, '--yes']), { stdio: 'inherit' });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

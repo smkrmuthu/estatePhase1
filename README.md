@@ -99,7 +99,7 @@ Barcodes use Crockford Base32 (no I/L/O/U) plus a check character, so a mistyped
 
 ## Hosting (Cloudflare, same account as fleet.oneuptech.co)
 
-One-time setup, from a laptop with Node 20+:
+One-time setup, from a Mac or Windows PC with Node.js 20+ and Git installed. On Windows, install **Node.js LTS** (nodejs.org) and **Git for Windows** (git-scm.com), then use **PowerShell**; every command below works the same there.
 
 ```bash
 git clone https://github.com/smkrmuthu/estatePhase1 && cd estatePhase1
@@ -112,7 +112,8 @@ npx wrangler d1 create estate-db
 # 2. Create the tables and stock rules
 npm run db:migrate:remote
 
-# 3. Set the sign-in secret (paste a long random string, e.g. from: openssl rand -hex 32)
+# 3. Set the sign-in secret (paste a long random string; to make one, on any OS:
+#    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" )
 npx wrangler secret put JWT_SECRET
 
 # 4. Create the first administrator (prompts for a password)
