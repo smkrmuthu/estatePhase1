@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { wranglerSync } from './wrangler.mjs';
 
 const DB = 'estate-demo-db';
 const SITE = 'https://estate-demo.oneuptech.co';
@@ -27,7 +28,7 @@ const size = opt('size', 'small');
 const env = { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' };
 
 const wrangler = (wArgs, input) =>
-  execFileSync('npx', ['wrangler', ...wArgs], { encoding: 'utf8', env, input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'inherit'] });
+  wranglerSync(wArgs, { encoding: 'utf8', env, input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'inherit'] });
 const step = (s) => console.log(`\n▸ ${s}`);
 
 async function ask(question) {
@@ -94,11 +95,11 @@ if (secrets.includes('"JWT_SECRET"')) {
 // 5. Administrator.
 step(`Administrator "${login}"`);
 const password = opt('password') || (await ask(`Password for ${login} on the demo site (8+ characters): `));
-const existing = execFileSync('node', ['scripts/create-user.mjs', '--remote', '--env', 'demo', '--db', DB, '--list'], { encoding: 'utf8', env });
+const existing = execFileSync(process.execPath, ['scripts/create-user.mjs', '--remote', '--env', 'demo', '--db', DB, '--list'], { encoding: 'utf8', env });
 if (existing.includes(`  ${login}  `)) {
   console.log('  already exists — using it');
 } else {
-  execFileSync('node', ['scripts/create-user.mjs', '--remote', '--env', 'demo', '--db', DB,
+  execFileSync(process.execPath, ['scripts/create-user.mjs', '--remote', '--env', 'demo', '--db', DB,
     '--org', 'OneUpTech Estate (Demo)', '--login', login, '--name', 'Demo Admin', '--role', 'admin', '--password', password], { stdio: 'inherit', env });
 }
 
@@ -111,7 +112,7 @@ for (let i = 0; ; i++) {
 }
 step('Demo data and checks');
 try {
-  execFileSync('node', ['scripts/seed-demo.mjs', '--url', SITE, '--login', login, '--password', password, '--size', size], { stdio: 'inherit', env });
+  execFileSync(process.execPath, ['scripts/seed-demo.mjs', '--url', SITE, '--login', login, '--password', password, '--size', size], { stdio: 'inherit', env });
 } catch {
   // seed-demo prints its own reasons (e.g. demo data already there, or a failed check).
 }

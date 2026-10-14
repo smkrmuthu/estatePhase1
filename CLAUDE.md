@@ -24,13 +24,40 @@ Guidance for Claude (and any developer) working in this repository.
 1. `git pull`
 2. `npm run demo:deploy`, then check the change on the demo site.
 3. `npm run deploy` for the live site.
-4. Reload the browser with Cmd+Shift+R. Static files are cache-busted with `?v=N` in `index.html`; **bump N whenever you change CSS or JS**.
+4. Reload the browser with **Cmd+Shift+R** on a Mac or **Ctrl+F5** on Windows. Static files are cache-busted with `?v=N` in `index.html`; **bump N whenever you change CSS or JS**.
 
 If the user says "not working" after a deploy, check in this order:
 1. Is the commit on GitHub?
 2. Did their `git pull` get it?
 3. Did they deploy after pulling?
 4. Is the browser showing a cached copy?
+
+## Works on Windows and Mac
+The owner may run every command from a **Windows PC** (PowerShell or Windows Terminal) or a **Mac** (Terminal). Everything must work on both.
+
+- **Setting up a Windows PC:**
+  1. Install **Node.js LTS** (nodejs.org) and **Git for Windows** (git-scm.com), with default options.
+  2. Open **PowerShell**, then run:
+     ```
+     git clone https://github.com/smkrmuthu/<repo>
+     cd <repo>
+     npm install
+     npx wrangler login
+     ```
+  3. After that, the `npm run …` commands are the same as on a Mac. VS Code is optional and has a built-in terminal.
+- **Scripts:** write them in Node (`.mjs`), never bash, and keep `npm` scripts to plain commands joined with `&&` (works in PowerShell and cmd too).
+  - No `rm`, `cp`, `grep`, `sed`, `export VAR=` or `$(…)` in package.json.
+  - Build paths with `node:path` and temp folders with `os.tmpdir()`.
+- **Never spawn `npx`/`npm` from Node** with `execFileSync('npx', …)`: it fails on Windows. Run Wrangler through `scripts/wrangler.mjs` (`wranglerSync`, `wranglerSpawn`), which starts the project's own Wrangler with `process.execPath`. Run other Node scripts with `process.execPath` too. Stop background processes with `stopTree()` (uses `taskkill` on Windows).
+- **Line endings:** `.gitattributes` keeps LF everywhere. Don't remove it, or Windows checkouts get CRLF in SQL and scripts.
+- **When you give the owner commands**, give one form that works in both shells. Where shells differ, give both, labelled **Mac** and **Windows (PowerShell)**. Common ones:
+
+  | Task | Mac (Terminal) | Windows (PowerShell) |
+  |---|---|---|
+  | Random secret | `openssl rand -hex 32 \| npx wrangler secret put JWT_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" \| npx wrangler secret put JWT_SECRET` |
+  | Find text in a file | `grep -c "text" public/index.html` | `Select-String -Path public\index.html -Pattern "text"` |
+  | Hard refresh | Cmd+Shift+R | Ctrl+F5 |
+  | Last commit | `git log --oneline -1` | same |
 
 ## Git
 - Changes go through a branch and pull request (see Code review below); small doc-only fixes may go straight to `main` if the owner says so. Pull before work and **fetch + rebase before push**: the owner commits from their laptop too, for example database IDs in `wrangler.jsonc`.
@@ -142,7 +169,7 @@ src/routes/                    auth, org, users, masters, stock, dispatches (+ t
 src/lib/stock.ts               balances, availability check, posting
 drizzle/schema.ts              schema (source of truth)
 migrations/0001_stock_rules.sql  the stock rules as triggers
-scripts/                       create-user, seed-demo, setup-demo
+scripts/                       create-user, seed-demo, setup-demo; wrangler.mjs = cross-platform Wrangler runner
 tests/api.test.mjs             integration tests (direct-SQL test must stay last)
 ```
 

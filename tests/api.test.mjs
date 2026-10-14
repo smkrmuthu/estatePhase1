@@ -2,7 +2,8 @@
 // directory and drives the API over HTTP. Run: npm test
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { wranglerSync, wranglerSpawn, stopTree } from '../scripts/wrangler.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,22 +13,23 @@ const BASE = `http://127.0.0.1:${PORT}/api/v1`;
 const dir = mkdtempSync(join(tmpdir(), 'estate-test-'));
 let server;
 
-const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'pipe', encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+const quiet = { stdio: 'pipe', encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } };
+const wrangler = (args) => wranglerSync(args, quiet);
 // Wrangler reports a failed statement (e.g. a trigger's RAISE) on stdout, so surface both streams.
 const d1 = (command) => {
   try {
-    return run('npx', ['wrangler', 'd1', 'execute', 'estate-db', '--local', '--persist-to', dir, '--command', command, '--json']);
+    return wrangler(['d1', 'execute', 'estate-db', '--local', '--persist-to', dir, '--command', command, '--json']);
   } catch (e) {
     throw new Error(`${e.stdout}\n${e.stderr}`);
   }
 };
 
 before(async () => {
-  run('npx', ['wrangler', 'd1', 'migrations', 'apply', 'estate-db', '--local', '--persist-to', dir]);
-  run('node', ['scripts/create-user.mjs', '--local', '--persist-to', dir, '--login', 'admin', '--name', 'Test Admin', '--password', 'adminpass1', '--org', 'Test Estate']);
+  wrangler(['d1', 'migrations', 'apply', 'estate-db', '--local', '--persist-to', dir]);
+  execFileSync(process.execPath, ['scripts/create-user.mjs', '--local', '--persist-to', dir, '--login', 'admin', '--name', 'Test Admin', '--password', 'adminpass1', '--org', 'Test Estate']);
   // Own process group, so after() can stop wrangler and the workerd it starts.
-  server = spawn('npx', ['wrangler', 'dev', '--port', String(PORT), '--ip', '127.0.0.1', '--persist-to', dir, '--var', 'JWT_SECRET:test-secret-test-secret-test-secret'],
-    { stdio: 'ignore', detached: true, env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+  server = wranglerSpawn(['dev', '--port', String(PORT), '--ip', '127.0.0.1', '--persist-to', dir, '--var', 'JWT_SECRET:test-secret-test-secret-test-secret'],
+    { stdio: 'ignore', detached: true, windowsHide: true, env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
   for (let i = 0; i < 120; i++) {
     try { if ((await fetch(`${BASE}/health`)).ok) return; } catch { /* starting */ }
     await new Promise((r) => setTimeout(r, 500));
@@ -36,7 +38,7 @@ before(async () => {
 });
 
 after(() => {
-  try { process.kill(-server.pid, 'SIGTERM'); } catch { /* already gone */ }
+  stopTree(server);
   rmSync(dir, { recursive: true, force: true });
 });
 
