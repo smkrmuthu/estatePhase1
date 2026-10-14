@@ -27,7 +27,7 @@ const d1 = (command) => {
 before(async () => {
   wrangler(['d1', 'migrations', 'apply', 'estate-db', '--local', '--persist-to', dir]);
   execFileSync(process.execPath, ['scripts/create-user.mjs', '--local', '--persist-to', dir, '--login', 'admin', '--name', 'Test Admin', '--password', 'adminpass1', '--org', 'Test Estate']);
-  // Own process group, so after() can stop wrangler and the workerd it starts.
+  // detached: own process group on Mac/Linux so after() can stop wrangler and its workerd (Windows uses taskkill /T).
   server = wranglerSpawn(['dev', '--port', String(PORT), '--ip', '127.0.0.1', '--persist-to', dir, '--var', 'JWT_SECRET:test-secret-test-secret-test-secret'],
     { stdio: 'ignore', detached: true, windowsHide: true, env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
   for (let i = 0; i < 120; i++) {

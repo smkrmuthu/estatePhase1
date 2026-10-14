@@ -14,7 +14,7 @@ export const wranglerSync = (args, options = {}) => execFileSync(process.execPat
 /** Start wrangler in the background (e.g. `wrangler dev`). Same options as spawn. */
 export const wranglerSpawn = (args, options = {}) => spawn(process.execPath, [wranglerBin, ...args], options);
 
-/** Stop a background wrangler and everything it started (workerd), on any OS. */
+/** Stop a background wrangler and everything it started (workerd), on any OS. On Mac/Linux, spawn it with `detached: true`. */
 export function stopTree(child) {
   try {
     if (process.platform === 'win32') execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
