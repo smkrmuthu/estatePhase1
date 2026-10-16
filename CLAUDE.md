@@ -137,6 +137,17 @@ Keep tests scalable, so future phases (harvest, fermentation, sorting, …) can 
 - Keep the user guide and the Google Docs in step with every user-visible change. Edit Google Docs **in place** with the Google Docs connector so links stay the same. Never create a duplicate without asking.
 - Write docs in plain language: what the page is for, what to enter, what happens.
 
+## Chats, computers and new projects
+- **Chats follow the owner's Claude account.** Chats on claude.ai, in the Claude app and in cloud Claude Code sessions (claude.ai/code) show on every device: Mac, Windows PC and phone. Claude Projects (claude.ai folders for chats and files) do too. A session started in a computer's own terminal stays on that computer only.
+- **Nothing lives on one computer.** Code and CLAUDE.md are on GitHub, docs are in Google Drive, the sites are at Cloudflare. A second computer needs only a one-time `git clone`, `npm install` and `npx wrangler login`; after that, `git pull` before every deploy.
+- **Starting a new project:**
+  1. The owner creates a new GitHub repository (for example `smkrmuthu/newProject`).
+  2. Copy this CLAUDE.md into its root. Keep Part 1 unchanged; replace Part 2 with the new project's sites, commands, layout and rules. If the owner says "start the new project with my CLAUDE.md from estatePhase1", do exactly this.
+  3. The owner starts a new cloud session at claude.ai/code on the new repository, so Claude reads CLAUDE.md from the first message.
+  4. On the computer they deploy from, the owner runs `git clone` once; then `git pull` keeps it current.
+- **One project per chat.** Keep each project in its own chat or session so work doesn't get mixed up. Add a repository to a session only when the task needs it.
+- When these steps change, update this section and section 11 of the Important Steps doc together.
+
 ---
 
 # Part 2 — OneUpTech Estate
