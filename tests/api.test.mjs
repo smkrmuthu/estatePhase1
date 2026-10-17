@@ -311,6 +311,30 @@ test('fermentation ref no: stored on the lot, trimmed, limited, optional', async
   assert.ok((await api(S.admin, 'GET', `/lots?item_id=${S.item}`)).body.lots.some((l) => l.fermentationRef === long));
 });
 
+test('opening stock: managers only; movement count drives the warning', async () => {
+  const g3 = (await api(S.admin, 'POST', '/godowns', { code: 'GD-NEW', name: 'New Godown' })).body.id;
+  const moves = async (g) => (await api(S.admin, 'GET', `/godowns/${g}/movements`)).body.normalMovements;
+  assert.equal(await moves(g3), 0); // brand-new godown: no warning
+  // An operator cannot record opening stock, even in their own godown; a normal inward is fine.
+  const opIn = (opening) => api(S.op, 'POST', '/receipts', { date: today, locationId: S.g1, itemId: S.item, grams: 1000, bags: 0, opening });
+  const refused = await opIn(true);
+  assert.equal(refused.status, 403);
+  assert.match(refused.body.error.message, /manager or administrator/);
+  assert.equal((await opIn(false)).status, 201);
+  // Opening stock does not count as a normal movement; a normal inward does.
+  const open = await api(S.admin, 'POST', '/receipts', { date: today, locationId: g3, itemId: S.item, grams: 50_000, bags: 1, opening: true });
+  assert.equal(open.status, 201, JSON.stringify(open.body));
+  assert.match(open.body.no, /^OPN-/);
+  assert.equal(await moves(g3), 0);
+  await api(S.admin, 'POST', '/receipts', { date: today, locationId: g3, itemId: S.item, grams: 50_000, bags: 1 });
+  assert.equal(await moves(g3), 1);
+  // Managers may still record opening stock in a busy godown (the screen warns first).
+  assert.ok(await moves(S.g1) > 0);
+  assert.equal((await api(S.admin, 'POST', '/receipts', { date: today, locationId: S.g1, itemId: S.item, grams: 1000, bags: 0, opening: true })).status, 201);
+  // Unknown godown.
+  assert.equal((await api(S.admin, 'GET', '/godowns/nope/movements')).status, 404);
+});
+
 // Keep this test last among the API tests: writing the local database directly leaves the dev server unable to answer.
 test('database rules hold even for direct SQL', async () => {
   assert.throws(() => d1('UPDATE stock_ledger SET grams = 1'), /ledger_immutable/);

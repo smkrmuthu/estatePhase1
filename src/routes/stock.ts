@@ -4,7 +4,7 @@ import type { AppEnv } from '../types';
 import { assertGodownAccess, requireAuth, requireRole } from '../middleware/auth';
 import { bags, body, grams, id, isoDate, text } from '../lib/validate';
 import { auditStmt } from '../lib/audit';
-import { conflict, invalid, notFound } from '../lib/errors';
+import { ApiError, conflict, invalid, notFound } from '../lib/errors';
 import { nextNo } from '../lib/numbers';
 import { assertAvailable, balances, postStatements, requireLocation, requireLot } from '../lib/stock';
 import { newId, nowIso, todayIso } from '../db';
@@ -118,6 +118,18 @@ const lotDetails = z.object({
   notes: text(300)
 });
 
+// How many normal movements (anything but opening stock and undos) a godown has had, so the
+// Inward screen can warn before opening stock is added to a godown already in use.
+stockRoutes.get('/godowns/:id/movements', async (c) => {
+  const auth = c.get('auth');
+  await requireLocation(c.env.DB, auth.orgId, c.req.param('id'));
+  const row = await c.env.DB.prepare(`
+    SELECT COUNT(DISTINCT t.id) AS n FROM stock_ledger e JOIN stock_txns t ON t.id = e.txn_id
+    WHERE t.org_id = ? AND e.location_id = ? AND t.type IN ('RECEIPT', 'TRANSFER', 'ADJUSTMENT', 'DISPATCH')`)
+    .bind(auth.orgId, c.req.param('id')).first<{ n: number }>();
+  return c.json({ normalMovements: row?.n ?? 0 });
+});
+
 stockRoutes.post('/receipts', poster, async (c) => {
   const auth = c.get('auth');
   const input = await body(c, z.object({
@@ -125,6 +137,10 @@ stockRoutes.post('/receipts', poster, async (c) => {
     grams, bags, reference: text(80), notes: text(300), opening: z.boolean().default(false)
   }));
   notFuture(input.date);
+  // Opening stock sets a godown's starting figures, so only managers and admins may record it.
+  if (input.opening && auth.role !== 'admin' && auth.role !== 'manager') {
+    throw new ApiError(403, 'forbidden', 'Only a manager or administrator can record opening stock.');
+  }
   const db = c.env.DB;
   await requireLocation(db, auth.orgId, input.locationId);
   await assertGodownAccess(c, [input.locationId]);

@@ -516,6 +516,19 @@
             moisturePct: d.moisturePct === "" ? null : Number(d.moisturePct), outturnPct: d.outturnPct === "" ? null : Number(d.outturnPct)
           };
         }
+        if (body.opening) {
+          // Opening stock is for coffee that was there before the app; warn if the godown is already in use.
+          const { normalMovements } = await Api.get(`/godowns/${encodeURIComponent(d.locationId)}/movements`).catch(() => ({ normalMovements: 0 }));
+          if (normalMovements > 0) {
+            const ok = await ask({
+              title: "Record opening stock?",
+              body: `<p><b>${esc(godownName(d.locationId))}</b> already has ${num(normalMovements)} normal stock movement${normalMovements === 1 ? "" : "s"}. Opening stock is only for coffee that was there before you started using the app.</p>
+                     <p>For stock found later, <b>Adjustment → Increase</b> with “Physical count correction (extra found)” is usually better.</p>`,
+              confirm: "Record opening stock"
+            });
+            if (!ok) return;
+          }
+        }
         const r = await attempt(() => Api.post("/receipts", body), "Inward saved", f.querySelector("[type=submit]"));
         if (r) { f.reset(); delete f.kg.dataset.touched; f.date.value = today(); lotsCache = {}; sync(); showPosted(`${r.no} · lot ${r.lotCode}`); }
       });
@@ -546,7 +559,7 @@
           <label>Net weight (kg)<input type="number" name="kg" min="0.001" step="0.001" required></label>
           <label class="span-2">Reference (weighbridge slip, delivery note)<input name="reference" maxlength="80"></label>
           <label class="span-2">Notes<textarea name="notes" rows="2" maxlength="300"></textarea></label>
-          <label class="check span-2"><input type="checkbox" name="opening"> Opening stock (already in the godown when we started using the app)</label>
+          ${can.manage() ? `<label class="check span-2"><input type="checkbox" name="opening"> Opening stock (already in the godown when we started using the app)</label>` : ""}
         </div>
         <div class="form-actions"><button class="btn primary" type="submit">Save inward</button></div>
       </form>`;
