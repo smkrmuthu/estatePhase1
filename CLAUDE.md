@@ -137,6 +137,17 @@ Keep tests scalable, so future phases (harvest, fermentation, sorting, …) can 
 - Keep the user guide and the Google Docs in step with every user-visible change. Edit Google Docs **in place** with the Google Docs connector so links stay the same. Never create a duplicate without asking.
 - Write docs in plain language: what the page is for, what to enter, what happens.
 
+## Chats, computers and new projects
+- **Chats follow the owner's Claude account.** Chats on claude.ai, in the Claude app and in cloud Claude Code sessions (claude.ai/code) show on every device: Mac, Windows PC and phone. Claude Projects (claude.ai folders for chats and files) do too. A session started in a computer's own terminal stays on that computer only.
+- **Nothing lives on one computer.** Code and CLAUDE.md are on GitHub, docs are in Google Drive, the sites are at Cloudflare. A second computer needs only a one-time `git clone`, `npm install` and `npx wrangler login`; after that, `git pull` before every deploy.
+- **Starting a new project:**
+  1. The owner creates a new GitHub repository (for example `smkrmuthu/newProject`).
+  2. Copy this CLAUDE.md into its root. Keep Part 1 unchanged; replace Part 2 with the new project's sites, commands, layout and rules. If the owner says "start the new project with my CLAUDE.md from estatePhase1", do exactly this.
+  3. The owner starts a new cloud session at claude.ai/code on the new repository, so Claude reads CLAUDE.md from the first message.
+  4. On the computer they deploy from, the owner runs `git clone` once; then `git pull` keeps it current.
+- **One project per chat.** Keep each project in its own chat or session so work doesn't get mixed up. Add a repository to a session only when the task needs it.
+- When these steps change, update this section and section 11 of the Important Steps doc together.
+
 ---
 
 # Part 2 — OneUpTech Estate
@@ -179,6 +190,12 @@ tests/api.test.mjs             integration tests (direct-SQL test must stay last
 - **Despatch flow:** save → **Loading** (stock held, barcodes issued) → print labels and optionally weigh → **Truck left — confirm** (stock deducted).
   - Labels can only be printed while Loading; the server refuses otherwise.
   - Editing lines replaces the barcodes. Old codes still scan and show as Cancelled.
+- **Undo (reversal):** a mistake is never edited or deleted; Undo posts an equal, opposite `REVERSAL` entry dated today, referencing the original number, and marks the original `REVERSED` (shown as Undone).
+  - Admin and manager only; a reason of at least 3 characters is required and goes to the audit log.
+  - Once only (unique `reverses_id`); a `REVERSAL` cannot itself be undone.
+  - Refused if stock has moved on (the godown + lot would go negative or below what Loading despatches hold): undo later entries first, newest first, or use an Adjustment.
+  - Inward / transfer / adjustment are undone from the Stock register (`POST /transactions/:id/reverse`). A `DISPATCH` is refused there: undo it from the despatch page (`POST /dispatches/:id/reverse`, only when Despatched), which returns stock to the same godown and lot and cancels its labels (they still scan, showing "Despatch undone"). A Loading despatch is edited or cancelled instead.
+  - These rules are also enforced by triggers in `migrations/0001_stock_rules.sql`; keep the API checks and triggers in step, with tests for each.
 - **Barcodes:** `PKG-` + 10 Crockford Base32 characters + a check character. They are immutable and never reused.
 - **Adjustment reasons depend on direction** (`ADJUSTMENT_REASONS` in `src/routes/stock.ts`). "Other" needs a note.
 - **Roles:** admin, manager, operator (only the godowns ticked in `user_godowns`), viewer. The auth middleware reloads the user on every request.
