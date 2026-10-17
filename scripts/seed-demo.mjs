@@ -165,8 +165,8 @@ async function small() {
   };
   await inward('y1ara', admin, day(2, 3), G.y1, I.ara, 100, 5002, { cropYear: '2024-25', moisturePct: 10.6, outturnPct: 81 }, { opening: true, reference: 'Stock count' });
   await inward('y2rob', admin, day(2, 3), G.y2, I.rob, 80, 4004, { cropYear: '2024-25', moisturePct: 11.2 }, { opening: true, reference: 'Stock count' });
-  await inward('y1rob', op1, day(1, 12), G.y1, I.rob, 60, 3010, { cropYear: '2025-26', moisturePct: 11.5, sourceRef: 'Valley Block' }, { reference: 'WB-1042' });
-  await inward('y2ara', op2, day(1, 20), G.y2, I.ara, 40, 2004, { cropYear: '2025-26', moisturePct: 10.8, outturnPct: 82, sourceRef: 'Hill Block A' }, { reference: 'WB-2107' });
+  await inward('y1rob', op1, day(1, 12), G.y1, I.rob, 60, 3010, { cropYear: '2025-26', moisturePct: 11.5, sourceRef: 'Valley Block', fermentationRef: 'FRM-25-031' }, { reference: 'WB-1042' });
+  await inward('y2ara', op2, day(1, 20), G.y2, I.ara, 40, 2004, { cropYear: '2025-26', moisturePct: 10.8, outturnPct: 82, sourceRef: 'Hill Block A', fermentationRef: 'FRM-25-034' }, { reference: 'WB-2107' });
   await must('Adjustment', mgr, 'POST', '/adjustments', { date: day(1, 25), locationId: G.y1, lotId: L.y1ara.lotId, direction: 'OUT', grams: kg(2), bags: 0, reason: 'Sampling / quality draw', notes: 'Cup test for Malabar Exports' });
 
   // Despatches: 2 despatched, 1 loading, 1 cancelled.

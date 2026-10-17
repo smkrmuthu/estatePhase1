@@ -57,7 +57,7 @@ stockRoutes.get('/lots', async (c) => {
 
 function lotJson(r: Record<string, unknown>) {
   return {
-    id: r.id, code: r.code, itemId: r.item_id, sourceType: r.source_type, sourceId: r.source_id, sourceRef: r.source_ref,
+    id: r.id, code: r.code, itemId: r.item_id, sourceType: r.source_type, sourceId: r.source_id, sourceRef: r.source_ref, fermentationRef: r.fermentation_ref,
     cropYear: r.crop_year, moisturePct: r.moisture_pct, outturnPct: r.outturn_pct, notes: r.notes, createdAt: r.created_at
   };
 }
@@ -113,6 +113,7 @@ const lotDetails = z.object({
   moisturePct: z.number().min(0).max(100).nullable().default(null),
   outturnPct: z.number().min(0).max(100).nullable().default(null),
   sourceRef: text(120),
+  fermentationRef: text(60),
   notes: text(300)
 });
 
@@ -143,9 +144,9 @@ stockRoutes.post('/receipts', poster, async (c) => {
     const dup = await db.prepare('SELECT 1 FROM lots WHERE org_id = ? AND code = ?').bind(auth.orgId, lotCode).first();
     if (dup) throw conflict(`Lot ${lotCode} already exists. Choose "Add to existing lot" instead.`);
     lotId = newId();
-    stmts.push(db.prepare(`INSERT INTO lots (id, org_id, code, item_id, source_type, source_ref, crop_year, moisture_pct, outturn_pct, notes, created_at, created_by)
-                           VALUES (?, ?, ?, ?, 'RECEIPT', ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(lotId, auth.orgId, lotCode, item.id, l.sourceRef, l.cropYear, l.moisturePct, l.outturnPct, l.notes, nowIso(), auth.userId));
+    stmts.push(db.prepare(`INSERT INTO lots (id, org_id, code, item_id, source_type, source_ref, fermentation_ref, crop_year, moisture_pct, outturn_pct, notes, created_at, created_by)
+                           VALUES (?, ?, ?, ?, 'RECEIPT', ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(lotId, auth.orgId, lotCode, item.id, l.sourceRef, l.fermentationRef, l.cropYear, l.moisturePct, l.outturnPct, l.notes, nowIso(), auth.userId));
   }
   const post = await postStatements(db, {
     orgId: auth.orgId, userId: auth.userId, type: input.opening ? 'OPENING' : 'RECEIPT', date: input.date,

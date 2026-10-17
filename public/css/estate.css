@@ -262,6 +262,11 @@ label.check input, .seg input { width: auto; }
 .line:last-child { margin-bottom: 10px; }
 input.wt { width: 110px; text-align: right; font-family: var(--mono); padding: 5px 8px; }
 .track-form { display: flex; gap: 10px; align-items: flex-end; }
+/* A text field with a Scan button beside it (e.g. Fermentation ref no on Inward). */
+.input-with-btn { display: flex; gap: 8px; align-items: stretch; }
+.input-with-btn .btn { font-weight: 600; }
+.input-with-btn .btn svg { width: 18px; height: 18px; flex: none; }
+.input-with-btn input::placeholder { font-family: var(--font); }
 .track-form .grow { flex: 1; }
 
 /* ---------- buttons ---------- */

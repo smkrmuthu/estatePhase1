@@ -1,0 +1,1 @@
+ALTER TABLE `lots` ADD `fermentation_ref` text DEFAULT '' NOT NULL;

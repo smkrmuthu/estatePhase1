@@ -88,7 +88,7 @@ test('masters', async () => {
 });
 
 test('receipt creates a lot and stock', async () => {
-  const r = await api(S.admin, 'POST', '/receipts', { date: today, locationId: S.g1, itemId: S.item, grams: 1_000_000, bags: 20, lot: { cropYear: '2025-26', moisturePct: 10.5 }, opening: true });
+  const r = await api(S.admin, 'POST', '/receipts', { date: today, locationId: S.g1, itemId: S.item, grams: 1_000_000, bags: 20, lot: { cropYear: '2025-26', moisturePct: 10.5, fermentationRef: '  FRM-25/07-T3  ' }, opening: true });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.match(r.body.no, /^OPN-\d{4}-00001$/);
   assert.match(r.body.lotCode, /^LOT-\d{4}-00001$/);
@@ -221,6 +221,7 @@ test('trace a package barcode', async () => {
   assert.equal(t.body.packageCount, 5);
   assert.equal(t.body.receipts.length, 2); // opening stock + the top-up into the same lot
   assert.equal(t.body.lot.moisturePct, 10.5);
+  assert.equal(t.body.lot.fermentationRef, 'FRM-25/07-T3'); // trimmed, and shown when a bag is scanned
   const typo = p.barcode.slice(0, 6) + (p.barcode[6] === 'A' ? 'B' : 'A') + p.barcode.slice(7);
   const bad = await api(S.admin, 'GET', `/trace/${typo}`);
   assert.equal(bad.body.found, false);
@@ -278,6 +279,35 @@ test('change own password', async () => {
 });
 
 // Last: writing to the local D1 file from a second process makes wrangler dev reload.
+test('fermentation ref no: stored on the lot, trimmed, limited, optional', async () => {
+  const receipt = (lot) => api(S.admin, 'POST', '/receipts', { date: today, locationId: S.g1, itemId: S.item, grams: 50_000, bags: 1, lot });
+  const lotOf = async (r) => (await api(S.admin, 'GET', `/lots/${r.body.lotId}`)).body.lot;
+  // Longest allowed (60 characters), as a scanner might send it.
+  const long = 'F'.repeat(59) + '9';
+  const ok = await receipt({ fermentationRef: long });
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  assert.equal((await lotOf(ok)).fermentationRef, long);
+  // One character too long is refused and nothing is saved.
+  const before = (await api(S.admin, 'GET', '/lots')).body.lots.length;
+  assert.equal((await receipt({ fermentationRef: long + 'X' })).status, 422);
+  assert.equal((await api(S.admin, 'GET', '/lots')).body.lots.length, before);
+  // Optional: missing, blank or spaces only all store ''.
+  for (const lot of [{}, { fermentationRef: '' }, { fermentationRef: '   ' }]) {
+    const r = await receipt(lot);
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await lotOf(r)).fermentationRef, '');
+  }
+  // Not text: refused.
+  assert.equal((await receipt({ fermentationRef: 12345 })).status, 422);
+  // Adding to an existing lot keeps that lot's ref.
+  const add = await api(S.admin, 'POST', '/receipts', { date: today, locationId: S.g1, itemId: S.item, lotId: ok.body.lotId, grams: 1000, bags: 0 });
+  assert.equal(add.status, 201, JSON.stringify(add.body));
+  assert.equal((await lotOf(ok)).fermentationRef, long);
+  // Listed with the lot for any future lot picker or export.
+  assert.ok((await api(S.admin, 'GET', `/lots?item_id=${S.item}`)).body.lots.some((l) => l.fermentationRef === long));
+});
+
+// Keep this test last among the API tests: writing the local database directly leaves the dev server unable to answer.
 test('database rules hold even for direct SQL', async () => {
   assert.throws(() => d1('UPDATE stock_ledger SET grams = 1'), /ledger_immutable/);
   assert.throws(() => d1('DELETE FROM stock_ledger'), /ledger_immutable/);

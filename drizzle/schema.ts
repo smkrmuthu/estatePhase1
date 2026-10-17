@@ -128,6 +128,7 @@ export const lots = sqliteTable(
     sourceType: text('source_type', { enum: LOT_SOURCES }).notNull().default('RECEIPT'),
     sourceId: text('source_id'), // row in a future source table (harvest intake, processing run …)
     sourceRef: text('source_ref').notNull().default(''),
+    fermentationRef: text('fermentation_ref').notNull().default(''), // fermentation batch / tank ref, typed or scanned
     cropYear: text('crop_year').notNull().default(''),
     moisturePct: real('moisture_pct'),
     outturnPct: real('outturn_pct'),

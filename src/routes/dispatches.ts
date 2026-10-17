@@ -354,7 +354,7 @@ dispatchRoutes.get('/trace/:code', async (c) => {
     packageCount: siblings!.n,
     dispatch: { id: d.id, no: d.no, status: d.status, date: d.date, vehicleNo: d.vehicleNo, driverName: d.driverName, destination: d.destination, statusReason: d.statusReason },
     client: { name: d.client.name },
-    lot: { id: lot!.id, code: lot!.code, cropYear: lot!.crop_year, sourceType: lot!.source_type, sourceRef: lot!.source_ref, moisturePct: lot!.moisture_pct },
+    lot: { id: lot!.id, code: lot!.code, cropYear: lot!.crop_year, sourceType: lot!.source_type, sourceRef: lot!.source_ref, fermentationRef: lot!.fermentation_ref, moisturePct: lot!.moisture_pct },
     item: { name: item!.name, coffeeType: item!.coffee_type, form: item!.form, grade: item!.grade },
     godown: line ? { id: line.location_id, name: line.godown_name } : null,
     receipts: receipts.results.map((r) => ({ no: r.no, type: r.type, postedAt: r.posted_at, godownName: r.godown_name }))
