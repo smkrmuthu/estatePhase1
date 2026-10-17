@@ -490,7 +490,15 @@
       f.fermentationRef.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); f.bags.focus(); } });
       f.querySelector("[data-scan-ferm]").addEventListener("click", () => Scanner.open({
         title: "Scan the fermentation ref", placeholder: "Or type the fermentation ref no", button: "Use",
-        onFound: code => { f.fermentationRef.value = code.slice(0, 60); toast(`Fermentation ref ${code.slice(0, 60)}`); f.bags.focus(); }
+        onFound: raw => {
+          // Some barcodes carry invisible control characters (e.g. GS1 separators): drop them.
+          const code = raw.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+          if (!code) return toast("That barcode was empty. Type the fermentation ref instead.", "error");
+          if (code.length > 60) return toast(`That code is ${code.length} characters; the fermentation ref can be at most 60. Type it instead.`, "error");
+          f.fermentationRef.value = code;
+          toast(`Fermentation ref ${code}`);
+          f.bags.focus();
+        }
       }));
       f.addEventListener("submit", async e => {
         e.preventDefault();

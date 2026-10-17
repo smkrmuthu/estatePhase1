@@ -297,6 +297,10 @@ test('fermentation ref no: stored on the lot, trimmed, limited, optional', async
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal((await lotOf(r)).fermentationRef, '');
   }
+  // Invisible control characters from a scanner are removed.
+  const gs1 = await receipt({ fermentationRef: 'FRM\u001d25\u0000-07' });
+  assert.equal(gs1.status, 201, JSON.stringify(gs1.body));
+  assert.equal((await lotOf(gs1)).fermentationRef, 'FRM25-07');
   // Not text: refused.
   assert.equal((await receipt({ fermentationRef: 12345 })).status, 422);
   // Adding to an existing lot keeps that lot's ref.

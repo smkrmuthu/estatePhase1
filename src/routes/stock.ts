@@ -113,7 +113,8 @@ const lotDetails = z.object({
   moisturePct: z.number().min(0).max(100).nullable().default(null),
   outturnPct: z.number().min(0).max(100).nullable().default(null),
   sourceRef: text(120),
-  fermentationRef: text(60),
+  // Scanned codes can carry invisible control characters (e.g. GS1 separators); never store them.
+  fermentationRef: text(60).transform((s) => s.replace(/[\u0000-\u001f\u007f]/g, '')),
   notes: text(300)
 });
 
