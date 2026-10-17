@@ -190,6 +190,12 @@ tests/api.test.mjs             integration tests (direct-SQL test must stay last
 - **Despatch flow:** save → **Loading** (stock held, barcodes issued) → print labels and optionally weigh → **Truck left — confirm** (stock deducted).
   - Labels can only be printed while Loading; the server refuses otherwise.
   - Editing lines replaces the barcodes. Old codes still scan and show as Cancelled.
+- **Undo (reversal):** a mistake is never edited or deleted; Undo posts an equal, opposite `REVERSAL` entry dated today, referencing the original number, and marks the original `REVERSED` (shown as Undone).
+  - Admin and manager only; a reason of at least 3 characters is required and goes to the audit log.
+  - Once only (unique `reverses_id`); a `REVERSAL` cannot itself be undone.
+  - Refused if stock has moved on (the godown + lot would go negative or below what Loading despatches hold): undo later entries first, newest first, or use an Adjustment.
+  - Inward / transfer / adjustment are undone from the Stock register (`POST /transactions/:id/reverse`). A `DISPATCH` is refused there: undo it from the despatch page (`POST /dispatches/:id/reverse`, only when Despatched), which returns stock to the same godown and lot and cancels its labels (they still scan, showing "Despatch undone"). A Loading despatch is edited or cancelled instead.
+  - These rules are also enforced by triggers in `migrations/0001_stock_rules.sql`; keep the API checks and triggers in step, with tests for each.
 - **Barcodes:** `PKG-` + 10 Crockford Base32 characters + a check character. They are immutable and never reused.
 - **Adjustment reasons depend on direction** (`ADJUSTMENT_REASONS` in `src/routes/stock.ts`). "Other" needs a note.
 - **Roles:** admin, manager, operator (only the godowns ticked in `user_godowns`), viewer. The auth middleware reloads the user on every request.
