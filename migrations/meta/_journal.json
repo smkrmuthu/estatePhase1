@@ -15,6 +15,13 @@
       "when": 1790932310414,
       "tag": "0001_stock_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792215264101,
+      "tag": "0002_fermentation_ref",
+      "breakpoints": true
     }
   ]
 }

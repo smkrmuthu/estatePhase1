@@ -436,6 +436,7 @@
         <dl class="facts">
           <div><dt>Source</dt><dd>${esc(l.sourceType)}${l.sourceRef ? ` · ${esc(l.sourceRef)}` : ""}</dd></div>
           <div><dt>Crop year</dt><dd>${esc(l.cropYear || "–")}</dd></div>
+          <div><dt>Fermentation ref</dt><dd class="mono">${esc(l.fermentationRef || "–")}</dd></div>
           <div><dt>Moisture on arrival</dt><dd>${l.moisturePct != null ? esc(l.moisturePct) + " %" : "–"}</dd></div>
           <div><dt>Outturn</dt><dd>${l.outturnPct != null ? esc(l.outturnPct) + " %" : "–"}</dd></div>
           <div><dt>Bags despatched</dt><dd>${packagesDispatched}</dd></div>
@@ -480,11 +481,25 @@
         const itemId = f.itemId.value;
         if (isNew || !itemId) { f.lotId.innerHTML = `<option value="">${itemId ? "Select lot" : "Select an item first"}</option>`; return; }
         lotsCache[itemId] = lotsCache[itemId] || (await Api.get(`/lots?item_id=${encodeURIComponent(itemId)}`)).lots;
-        f.lotId.innerHTML = options(lotsCache[itemId], "", l => l.code, lotsCache[itemId].length ? "Select lot" : "No lots for this item yet");
+        f.lotId.innerHTML = options(lotsCache[itemId], "", l => l.fermentationRef ? `${l.code} · ${l.fermentationRef}` : l.code, lotsCache[itemId].length ? "Select lot" : "No lots for this item yet");
       };
       f.addEventListener("change", e => { if (e.target.name === "lotMode" || e.target.name === "itemId") sync(); });
       autoKg(f, f.bags, f.kg, () => f.itemId.value);
       sync();
+      // A USB/Bluetooth scanner types the code and presses Enter: keep the code, don't save the form.
+      f.fermentationRef.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); f.bags.focus(); } });
+      f.querySelector("[data-scan-ferm]").addEventListener("click", () => Scanner.open({
+        title: "Scan the fermentation ref", placeholder: "Or type the fermentation ref no", button: "Use",
+        onFound: raw => {
+          // Some barcodes carry invisible control characters (e.g. GS1 separators): drop them.
+          const code = raw.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+          if (!code) return toast("That barcode was empty. Type the fermentation ref instead.", "error");
+          if (code.length > 60) return toast(`That code is ${code.length} characters; the fermentation ref can be at most 60. Type it instead.`, "error");
+          f.fermentationRef.value = code;
+          toast(`Fermentation ref ${code}`);
+          f.bags.focus();
+        }
+      }));
       f.addEventListener("submit", async e => {
         e.preventDefault();
         const d = formData(f);
@@ -497,7 +512,7 @@
           body.lotId = d.lotId;
         } else {
           body.lot = {
-            code: d.lotCode, cropYear: d.cropYear, sourceRef: d.sourceRef, notes: "",
+            code: d.lotCode, cropYear: d.cropYear, sourceRef: d.sourceRef, fermentationRef: d.fermentationRef, notes: "",
             moisturePct: d.moisturePct === "" ? null : Number(d.moisturePct), outturnPct: d.outturnPct === "" ? null : Number(d.outturnPct)
           };
         }
@@ -518,12 +533,15 @@
             <label><input type="radio" name="lotMode" value="new" checked> New lot</label>
             <label><input type="radio" name="lotMode" value="existing"> Add to existing lot</label>
           </fieldset>
+          <label data-newlot class="span-2">Fermentation ref no
+            <span class="input-with-btn"><input name="fermentationRef" class="mono" placeholder="Type or scan" maxlength="60" autocomplete="off">
+            <button type="button" class="btn ghost" data-scan-ferm aria-label="Scan the fermentation ref barcode">${ICON.scan}<span>Scan</span></button></span></label>
+          <label data-oldlot class="span-2" hidden>Existing lot<select name="lotId"></select></label>
           <label data-newlot>Lot code<input name="lotCode" placeholder="Auto: LOT-${today().slice(0, 4)}-…" maxlength="40"></label>
           <label data-newlot>Crop year<input name="cropYear" placeholder="e.g. 2025-26" maxlength="20"></label>
           <label data-newlot>Moisture %<input type="number" name="moisturePct" step="0.1" min="0" max="100"></label>
           <label data-newlot>Outturn %<input type="number" name="outturnPct" step="0.1" min="0" max="100"></label>
           <label data-newlot class="span-2">Source / estate reference<input name="sourceRef" placeholder="Estate, block, supplier or delivery reference" maxlength="120"></label>
-          <label data-oldlot class="span-2" hidden>Existing lot<select name="lotId"></select></label>
           <label>Bags<input type="number" name="bags" min="0" step="1" required></label>
           <label>Net weight (kg)<input type="number" name="kg" min="0.001" step="0.001" required></label>
           <label class="span-2">Reference (weighbridge slip, delivery note)<input name="reference" maxlength="80"></label>
@@ -1043,6 +1061,7 @@
             <div><dt>From godown</dt><dd>${esc(t.godown ? t.godown.name : "–")}</dd></div>
             <div><dt>Net weight / bags</dt><dd>${kg(p.grams)} kg · ${p.bags} bag${p.bags === 1 ? "" : "s"}</dd></div>
             <div><dt>Source</dt><dd>${esc(t.lot.sourceRef || t.lot.sourceType)}</dd></div>
+            ${t.lot.fermentationRef ? `<div><dt>Fermentation ref</dt><dd class="mono">${esc(t.lot.fermentationRef)}</dd></div>` : ""}
           </dl>
           <h2>History</h2>
           <ol class="timeline">${steps.map(s => `<li><span class="t-at">${fmtTime(s.at)}</span><span>${esc(s.text)}</span>${s.ref ? `<span class="mono muted">${esc(s.ref)}</span>` : ""}</li>`).join("")}</ol>
@@ -1339,6 +1358,9 @@
     const video = document.getElementById("scanVideo");
     const msg = t => { document.getElementById("scanMsg").textContent = t; };
     let stream = null, timer = null, session = 0;
+    // What a scan is for: tracking a bag label (default) or filling a form field (onFound).
+    let mode = { onFound: null, anyFormat: false };
+    const ANY_NATIVE = ["code_128", "code_39", "code_93", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "codabar", "qr_code", "data_matrix"];
 
     function loadZxing() {
       if (window.ZXing) return Promise.resolve();
@@ -1355,6 +1377,10 @@
       if (!("BarcodeDetector" in window)) return null;
       try {
         const formats = await BarcodeDetector.getSupportedFormats();
+        if (mode.anyFormat) {
+          const use = ANY_NATIVE.filter(f => formats.includes(f));
+          return use.length ? new BarcodeDetector({ formats: use }) : null;
+        }
         return formats.includes("code_128") ? new BarcodeDetector({ formats: ["code_128"] }) : null;
       } catch (e) { return null; }
     }
@@ -1363,7 +1389,11 @@
       await loadZxing();
       const Z = window.ZXing;
       const reader = new Z.MultiFormatReader();
-      reader.setHints(new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.CODE_128]], [Z.DecodeHintType.TRY_HARDER, true]]));
+      const F = Z.BarcodeFormat;
+      const wanted = mode.anyFormat
+        ? [F.CODE_128, F.CODE_39, F.CODE_93, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX]
+        : [F.CODE_128];
+      reader.setHints(new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, wanted], [Z.DecodeHintType.TRY_HARDER, true]]));
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       return () => {
@@ -1382,15 +1412,25 @@
 
     function found(code) {
       if (navigator.vibrate) navigator.vibrate(60);
+      const onFound = mode.onFound;
       close();
-      location.hash = `#/track/${encodeURIComponent(code.trim())}`;
+      if (onFound) onFound(code.trim());
+      else location.hash = `#/track/${encodeURIComponent(code.trim())}`;
     }
 
-    async function open() {
+    // open() tracks a bag label. open({ title, placeholder, button, onFound }) scans any
+    // common barcode or QR code into a form field instead.
+    async function open(opts = {}) {
       const my = ++session;
+      mode = { onFound: opts.onFound || null, anyFormat: !!opts.onFound };
+      document.getElementById("scanTitle").textContent = opts.title || "Scan a bag label";
+      const manual = box.querySelector("[name=code]");
+      manual.value = "";
+      manual.placeholder = opts.placeholder || "Or type the code under the bars";
+      manual.setAttribute("aria-label", manual.placeholder);
+      box.querySelector("#scanManual [type=submit]").textContent = opts.button || "Track";
       box.hidden = false;
       document.body.classList.add("scanning");
-      box.querySelector("[name=code]").value = "";
       msg("Starting the camera…");
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         msg("This browser can't use the camera here. Type the code under the bars instead.");
