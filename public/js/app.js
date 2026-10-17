@@ -481,7 +481,7 @@
         const itemId = f.itemId.value;
         if (isNew || !itemId) { f.lotId.innerHTML = `<option value="">${itemId ? "Select lot" : "Select an item first"}</option>`; return; }
         lotsCache[itemId] = lotsCache[itemId] || (await Api.get(`/lots?item_id=${encodeURIComponent(itemId)}`)).lots;
-        f.lotId.innerHTML = options(lotsCache[itemId], "", l => l.code, lotsCache[itemId].length ? "Select lot" : "No lots for this item yet");
+        f.lotId.innerHTML = options(lotsCache[itemId], "", l => l.fermentationRef ? `${l.code} · ${l.fermentationRef}` : l.code, lotsCache[itemId].length ? "Select lot" : "No lots for this item yet");
       };
       f.addEventListener("change", e => { if (e.target.name === "lotMode" || e.target.name === "itemId") sync(); });
       autoKg(f, f.bags, f.kg, () => f.itemId.value);
@@ -533,15 +533,15 @@
             <label><input type="radio" name="lotMode" value="new" checked> New lot</label>
             <label><input type="radio" name="lotMode" value="existing"> Add to existing lot</label>
           </fieldset>
+          <label data-newlot class="span-2">Fermentation ref no
+            <span class="input-with-btn"><input name="fermentationRef" class="mono" placeholder="Type or scan" maxlength="60" autocomplete="off">
+            <button type="button" class="btn ghost" data-scan-ferm aria-label="Scan the fermentation ref barcode">${ICON.scan}<span>Scan</span></button></span></label>
+          <label data-oldlot class="span-2" hidden>Existing lot<select name="lotId"></select></label>
           <label data-newlot>Lot code<input name="lotCode" placeholder="Auto: LOT-${today().slice(0, 4)}-…" maxlength="40"></label>
           <label data-newlot>Crop year<input name="cropYear" placeholder="e.g. 2025-26" maxlength="20"></label>
           <label data-newlot>Moisture %<input type="number" name="moisturePct" step="0.1" min="0" max="100"></label>
           <label data-newlot>Outturn %<input type="number" name="outturnPct" step="0.1" min="0" max="100"></label>
           <label data-newlot class="span-2">Source / estate reference<input name="sourceRef" placeholder="Estate, block, supplier or delivery reference" maxlength="120"></label>
-          <label data-newlot class="span-2">Fermentation ref no
-            <span class="input-with-btn"><input name="fermentationRef" class="mono" placeholder="Type or scan" maxlength="60" autocomplete="off">
-            <button type="button" class="btn ghost" data-scan-ferm aria-label="Scan the fermentation ref barcode">${ICON.scan}<span>Scan</span></button></span></label>
-          <label data-oldlot class="span-2" hidden>Existing lot<select name="lotId"></select></label>
           <label>Bags<input type="number" name="bags" min="0" step="1" required></label>
           <label>Net weight (kg)<input type="number" name="kg" min="0.001" step="0.001" required></label>
           <label class="span-2">Reference (weighbridge slip, delivery note)<input name="reference" maxlength="80"></label>
