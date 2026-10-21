@@ -219,3 +219,16 @@ tests/api.test.mjs             integration tests (direct-SQL test must stay last
 - Scan to load: check each packed bag onto the truck before Truck left.
 - Returns, and physical stock counts.
 - Harvest, fermentation and sorting phases, linked to lots via `source_type` / `source_id`.
+
+### Decided for the next phases (owner, October 2026)
+- **Processing before Inward** (from the draft sheet Book1.xlsx): Subdivision (SSD harvest batch) → Tank (TTD, fermentation) → Tray (drying) → Finished goods, which becomes the Inward lot. The Tank (TTD) number is the lot's Fermentation ref. Open questions are in Important Steps sections 14–15 and the "Estate owner questions" Google Sheet; don't design until they are answered.
+- **More estates = separate organisations (option B).** Each estate is its own organisation with its own users, masters, stock and photos, its own web address (e.g. `brook.oneuptech.co`) and its own branding (name, logo, tagline; "Powered by OneUpTech" in small print).
+  - Start with one shared D1 database, isolated by `org_id` on every row and every query. Move an estate to its own database only if it asks for full separation.
+  - Needs: a OneUpTech admin screen to create an estate and its first admin; hostname → organisation lookup at sign-in (a user can't sign in on another estate's address); logo and tagline in Settings.
+  - Every new table carries `org_id`, and every test covers that one organisation cannot read or change another's data.
+- **Photos in Cloudflare R2** (not Supabase), attached to: tanks, trays, finished goods (lots), despatches (trucks), quality certificates (lot or estate; PDFs allowed) and plants (subdivision, dated).
+  - Shrink on the phone before upload (about 1600 px, about 300 KB); images and PDFs only, with a size limit.
+  - D1 keeps a photo row (org, attached-to record, R2 key, caption, who, when); the file lives in R2 under an org prefix and is served through the Worker after a permission check. Private by default.
+  - Photos can be hidden, never deleted; show them along the trace (plants → tank → tray → finished goods → truck, plus certificates).
+  - Still open: whether buyers may see any photos on a public trace page.
+- **Order of work:** processing with photos → multiple estates → buyer trace page (if wanted). Each goes to the demo site first, with its own PR and review.
