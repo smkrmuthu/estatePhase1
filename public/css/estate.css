@@ -183,8 +183,8 @@ h1 .mono, h1.mono { font-family: var(--mono); font-size: 22px; font-weight: 600;
 .layout > * { min-width: 0; }
 .sidenav { padding: 16px 10px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 2px; }
 .sidenav a { display: flex; align-items: center; gap: 11px; padding: 8px 12px; border-radius: 8px; color: var(--text-2); text-decoration: none; font-weight: 500; }
-.nav-ico { width: 20px; height: 20px; flex: none; opacity: .8; }
-.sidenav a.active .nav-ico { opacity: 1; color: var(--gold-700); }
+.nav-ico { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+.sidenav a.active .nav-ico { opacity: 1; }
 .sidenav a:hover { background: var(--row-hover); color: var(--text); }
 .sidenav a.active { background: var(--nav-active-bg); color: var(--nav-active); font-weight: 650; box-shadow: inset 3px 0 0 var(--gold-500); }
 .nav-group { margin: 14px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--nav-group); }
