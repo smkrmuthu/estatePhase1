@@ -1,0 +1,42 @@
+/* ==========================================================================
+   CEMMS prototype design tokens (reference only, not loaded by the app).
+   Copied from the clickable prototype so the colours and fonts are available
+   in this repository. The live app's theme is still public/css/estate.css.
+
+   Fonts: Geist (text) and Geist Mono (numbers, codes). Add to <head> to use:
+   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+
+   One leaf-green action colour; cherry red only on the brand mark.
+   Dark mode follows the system, and data-theme="light" / "dark" on <html>
+   forces one.
+   ========================================================================== */
+
+:root {
+  --bg: #F6F7F5; --surface: #FFFFFF; --surface-2: #F0F2EE; --line: #E3E7E1; --line-strong: #CBD2C9;
+  --fg: #111813; --muted: #5B675F; --accent: #1F6B47; --accent-hover: #185A3B; --accent-fg: #FFFFFF; --accent-soft: #E5F0E9;
+  --cherry: #B23A2B; --cherry-soft: #F8E7E3;
+  --ok: #1F6B47; --ok-soft: #E5F0E9; --warn: #8A5A00; --warn-soft: #FBF1D9; --bad: #B42318; --bad-soft: #FCE8E6; --info: #2A5B88; --info-soft: #E5EDF6;
+  --paper: #FFFFFF; --ink: #141814; --scrim: rgba(14, 20, 16, .42); --shadow: rgba(16, 32, 22, .14);
+  --font: 'Geist', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --r-sm: 8px; --r: 12px; --r-lg: 16px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1210; --surface: #151A17; --surface-2: #1C231F; --line: #262F29; --line-strong: #36423A;
+    --fg: #E8EDE9; --muted: #9BA79F; --accent: #6CC497; --accent-hover: #84D2A9; --accent-fg: #06140C; --accent-soft: #17301F;
+    --cherry: #EA8C7B; --cherry-soft: #3A211C;
+    --ok: #6CC497; --ok-soft: #17301F; --warn: #E8B85E; --warn-soft: #33280F; --bad: #F38B80; --bad-soft: #3A1C19; --info: #91B9E3; --info-soft: #18263A;
+    --scrim: rgba(0, 0, 0, .62); --shadow: rgba(0, 0, 0, .5); color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0E1210; --surface: #151A17; --surface-2: #1C231F; --line: #262F29; --line-strong: #36423A;
+  --fg: #E8EDE9; --muted: #9BA79F; --accent: #6CC497; --accent-hover: #84D2A9; --accent-fg: #06140C; --accent-soft: #17301F;
+  --cherry: #EA8C7B; --cherry-soft: #3A211C;
+  --ok: #6CC497; --ok-soft: #17301F; --warn: #E8B85E; --warn-soft: #33280F; --bad: #F38B80; --bad-soft: #3A1C19; --info: #91B9E3; --info-soft: #18263A;
+  --scrim: rgba(0, 0, 0, .62); --shadow: rgba(0, 0, 0, .5); color-scheme: dark;
+}
